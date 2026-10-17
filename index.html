@@ -292,7 +292,7 @@ const PACKW = ['봉지', '통', '팩', '병', '묶음', '박스', '상자', '캔
 function parseAmt(text) {
   let s = String(text ?? '').trim();
   if (!s) return null;
-  s = s.replace(/^한\s*/, '1 ').replace(/^반\s*/, '0.5 ').replace(/^두\s*/, '2 ').replace(/^세\s*/, '3 ');
+  s = s.replace(/^(한|반|두|세)\s+/, (_, w) => ({ 한: '1 ', 반: '0.5 ', 두: '2 ', 세: '3 ' })[w]);
   const m = s.match(/^(\d+\/\d+|\d[\d,]*(?:\.\d+)?(?:\s+\d+\/\d+)?|\.\d+)?\s*(fl\.?\s*oz|[a-zA-Z가-힣]+)?\s*(.*)$/);
   if (!m || (!m[1] && !m[2])) return null;
   let n = 1, hasN = false;
@@ -376,23 +376,23 @@ function blankState() {
   };
 }
 function mkIng(s, o, date, ts) {
-  const ing = { id: uid(), name: '', kind: 'weight', buyText: '', yield: 100, conv: {}, packText: '', minPacks: null, dailyManual: null, anchor: null, anchorAuto: true };
+  const ing = { id: uid(), name: '', kind: 'weight', buyText: '', yield: 100, conv: {}, packText: '', minPacks: null, dailyManual: null, anchors: [], anchorAuto: true };
   const paid = o.paid || 0, stock = o.stock; delete o.paid; delete o.stock;
   Object.assign(ing, o);
   const qty = baseInfo(ing).qty || 0;
   const p = { id: uid(), itemId: ing.id, type: 'ing', date, ts, qty, paid, leftover: null, rawUnit: qty ? paid / qty : 0, addsToStock: false, anchored: true };
   s.ingredients.push(ing); s.purchases.push(p);
-  ing.anchor = { date, ts, qty: stock ?? qty, usageAtAnchor: 0 };
+  setAnchor(ing, { date, ts, qty: stock ?? qty, usageAtAnchor: 0 });
   return ing;
 }
 function mkSup(s, o, date, ts) {
-  const sup = { id: uid(), name: '', packText: '100개 묶음', price: null, minPacks: null, dailyManual: null, rule: { mode: 'order', menuId: 'all', count: 1 }, anchor: null, anchorAuto: true };
+  const sup = { id: uid(), name: '', packText: '100개 묶음', price: null, minPacks: null, dailyManual: null, rule: { mode: 'order', menuId: 'all', count: 1 }, anchors: [], anchorAuto: true };
   const packs = o.packs ?? 1, stockPacks = o.stockPacks; delete o.packs; delete o.stockPacks;
   Object.assign(sup, o);
   const size = parseAmt(sup.packText)?.n || 1;
   const p = { id: uid(), itemId: sup.id, type: 'sup', date, ts, qty: packs * size, paid: (num(sup.price) || 0) * packs, leftover: null, addsToStock: false, anchored: true };
   s.supplies.push(sup); s.purchases.push(p);
-  sup.anchor = { date, ts, qty: (stockPacks ?? packs) * size, usageAtAnchor: 0 };
+  setAnchor(sup, { date, ts, qty: (stockPacks ?? packs) * size, usageAtAnchor: 0 });
   return sup;
 }
 function seedState() {
@@ -482,12 +482,17 @@ function demoState() {
   // 현재 재고를 시안 숫자에 맞춤
   S = s; C = {};
   const target = { bread: 8, cream: 1600, garlic: 700, pork: 6400, pasta: 9000, soy: 900, sugar: 4500, milk: 3000, parm: 600, hon: 500, leek: 900, tor: 120, onion: 3000, rice: 7000, beans: 4000, lettuce: 1500, salsa: 1800 };
-  for (const k in I) if (target[k] != null) { const it = { type: 'ing', o: I[k] }; I[k].anchor = { date: t, ts: Date.now(), qty: target[k], usageAtAnchor: usage(it, t) }; I[k].anchorAuto = false; }
+  for (const k in I) if (target[k] != null) { const it = { type: 'ing', o: I[k] }; setAnchor(I[k], { date: t, ts: Date.now(), qty: target[k], usageAtAnchor: usage(it, t) }); I[k].anchorAuto = false; }
   const supT = [40, 50, 300, 2000];
-  sups.forEach((o, i) => { const it = { type: 'sup', o }; o.anchor = { date: t, ts: Date.now(), qty: supT[i], usageAtAnchor: usage(it, t) }; o.anchorAuto = false; });
+  sups.forEach((o, i) => { const it = { type: 'sup', o }; setAnchor(o, { date: t, ts: Date.now(), qty: supT[i], usageAtAnchor: usage(it, t) }); o.anchorAuto = false; });
   I.cream.dailyManual = 900; I.sugar.dailyManual = 60;
   C = {};
   return s;
+}
+function setAnchor(o, a) {
+  o.anchors = (o.anchors || []).filter(x => x.date !== a.date);
+  o.anchors.push(a);
+  o.anchors.sort((x, y) => x.date.localeCompare(y.date) || x.ts - y.ts);
 }
 function migrate(d) {
   const s = Object.assign(blankState(), d || {});
@@ -495,6 +500,7 @@ function migrate(d) {
   for (const k of ['ingredients', 'menus', 'supplies', 'purchases', 'fixedCosts']) if (!Array.isArray(s[k])) s[k] = [];
   if (!Array.isArray(s.channels) || !s.channels.length) s.channels = defaultChannels();
   if (!s.days || typeof s.days !== 'object') s.days = {};
+  for (const o of [...s.ingredients, ...s.supplies]) { if (!Array.isArray(o.anchors)) o.anchors = o.anchor ? [o.anchor] : []; delete o.anchor; }
   return s;
 }
 
@@ -547,7 +553,29 @@ function lineCalc(line, date) {
   return { cost: b.v * effUnit(ing, date), base: b.v, gross: b.v / yieldF(ing), ing };
 }
 const menuCost = (m, date) => memo('mc' + m.id + date, () => m.recipe.reduce((a, l) => a + lineCalc(l, date).cost, 0));
-const priceOf = (m, ch) => { const v = m.prices?.[ch]; return v == null || v === '' ? null : num(v); };
+// 날짜를 주면 그날 적용되던 가격을 쓴다 (가격을 바꿔도 지난 기록은 그대로)
+function pricesAt(m, date) { const h = m.priceHist; if (!date || !h || !h.length) return m.prices || {}; let r = h[0].prices; for (const x of h) if (x.from <= date) r = x.prices; return r || {}; }
+const priceOf = (m, ch, date) => { const v = pricesAt(m, date)?.[ch]; return v == null || v === '' ? null : num(v); };
+function setMenuPrice(m, ch, v) {
+  const t = today();
+  m.prices = m.prices || {};
+  const past = Object.keys(S.days).some(d => d < t && num(S.days[d]?.sales?.[m.id]?.[ch]));
+  if (!past) { m.prices[ch] = v; for (const h of m.priceHist || []) h.prices[ch] = v; return; }
+  if (!m.priceHist) m.priceHist = [{ from: '0000-00-00', prices: { ...m.prices } }];
+  m.prices[ch] = v;
+  const e = m.priceHist.find(h => h.from === t);
+  if (e) e.prices = { ...m.prices }; else m.priceHist.push({ from: t, prices: { ...m.prices } });
+}
+const CHF = ['app', 'pay', 'fee', 'vat'];
+function chAt(ch, date) { const h = ch.hist; if (!date || !h || !h.length) return ch; let r = h[0]; for (const x of h) if (x.from <= date) r = x; return { ...ch, app: r.app, pay: r.pay, fee: r.fee, vat: r.vat }; }
+function setCh(ch, patch) {
+  const t = today();
+  if (!ch.hist) ch.hist = [{ from: '0000-00-00', ...Object.fromEntries(CHF.map(f => [f, ch[f]])) }];
+  Object.assign(ch, patch);
+  const snap = Object.fromEntries(CHF.map(f => [f, ch[f]]));
+  const e = ch.hist.find(h => h.from === t);
+  if (e) Object.assign(e, snap); else ch.hist.push({ from: t, ...snap });
+}
 const isTakeout = ch => ch.kind !== 'store';
 const vatF = ch => ch.vat ? 1.1 : 1;
 const pctOf = ch => ((num(ch.app) || 0) + (num(ch.pay) || 0)) / 100;
@@ -561,7 +589,8 @@ function chFee(ch, sales, orders, day) {
   if (ch.kind === 'own') { const oc = day?.ownCost; const del = oc != null && oc !== '' ? num(oc) || 0 : orders * (num(ch.fee) || 0) * v; return sales * pct * v + del; }
   return sales * pct * v + orders * (num(ch.fee) || 0) * v;
 }
-function isClosed(date) { const d = S.days[date]; if (d && d.closed === true) return true; if (d && d.closed === false) return false; return (S.settings.closedWeekdays || []).includes(pdate(date).getDay()); }
+function closedFor(month) { const h = S.settings.closedHist; if (h && h.length) { let r = h[0].days; for (const x of h) if (x.from <= month) r = x.days; return r || []; } return S.settings.closedWeekdays || []; }
+function isClosed(date) { const d = S.days[date]; if (d && d.closed === true) return true; if (d && d.closed === false) return false; return closedFor(monthOf(date)).includes(pdate(date).getDay()); }
 function fixedAmount(f, month) { let a = null; for (const h of f.hist || []) if (h.from <= month) a = num(h.amount) || 0; if (a == null) return 0; return f.annual ? Math.round(a / 12) : a; }
 function fixedRaw(f, month) { let a = null; for (const h of f.hist || []) if (h.from <= month) a = h.amount; return a; }
 const monthFixed = month => memo('mf' + month, () => S.fixedCosts.reduce((a, f) => a + fixedAmount(f, month), 0));
@@ -570,21 +599,23 @@ const dailyShare = month => { const bd = businessDays(month); return bd ? monthF
 function dayCalc(date) {
   return memo('dc' + date, () => {
     const day = S.days[date];
-    const per = {}; let revenue = 0, ing = 0, fees = 0, qty = 0, store = 0, takeout = 0;
+    const per = {}, missing = []; let revenue = 0, ing = 0, fees = 0, qty = 0, store = 0, takeout = 0;
     for (const ch of S.channels) per[ch.id] = { sales: 0, qty: 0 };
     for (const m of S.menus) {
       const row = day?.sales?.[m.id]; if (!row) continue;
       const cost = menuCost(m, date);
       for (const ch of S.channels) {
         const q = num(row[ch.id]) || 0; if (!q) continue;
-        const pr = priceOf(m, ch.id) ?? priceOf(m, 'store') ?? 0;
-        per[ch.id].sales += q * pr; per[ch.id].qty += q; ing += q * cost; qty += q;
+        const pr = priceOf(m, ch.id, date);
+        if (pr == null) missing.push(`${m.name || '이름 없는 메뉴'}(${ch.short})`);
+        per[ch.id].sales += q * (pr || 0); per[ch.id].qty += q; ing += q * cost; qty += q;
       }
     }
     for (const ch of S.channels) {
       const p = per[ch.id];
       p.orders = ch.kind === 'store' ? 0 : ordersOf(day, ch.id);
-      p.fee = (p.sales || p.orders || (ch.kind === 'own' && day?.ownCost)) ? chFee(ch, p.sales, p.orders, day) : 0;
+      p.ordersBlank = ch.kind !== 'store' && p.qty > 0 && (day?.orders?.[ch.id] == null || day.orders[ch.id] === '');
+      p.fee = (p.sales || p.orders || (ch.kind === 'own' && day?.ownCost)) ? chFee(chAt(ch, date), p.sales, p.orders, day) : 0;
       p.received = p.sales - p.fee;
       fees += p.fee; revenue += p.sales;
       if (ch.kind === 'store') store += p.sales; else takeout += p.sales;
@@ -601,25 +632,25 @@ function dayCalc(date) {
     const closed = isClosed(date);
     const share = closed ? 0 : dailyShare(monthOf(date));
     const net = revenue - ing - expenses - fees - review - share;
-    return { per, revenue, store, takeout, transfers, ing, fees, expenses, review, reviewIng, share, net, qty, closed, has: !!day };
+    return { per, missing, revenue, store, takeout, transfers, ing, fees, expenses, review, reviewIng, share, net, qty, closed, has: !!day };
   });
 }
 function monthCalc(month) {
   return memo('mo' + month, () => {
-    const r = { revenue: 0, store: 0, takeout: 0, transfers: 0, ing: 0, fees: 0, expenses: 0, review: 0, reviewIng: 0, shareSoFar: 0, netSoFar: 0, qty: 0, daysWithSales: 0, menus: {} };
+    const r = { revenue: 0, store: 0, takeout: 0, transfers: 0, ing: 0, fees: 0, expenses: 0, review: 0, reviewIng: 0, shareSoFar: 0, netSoFar: 0, qty: 0, daysWithSales: 0, menus: {}, future: 0 };
     const t = today();
     for (const d of monthDates(month)) {
-      if (d > t && !S.days[d]) continue;
+      if (d > t) { if (S.days[d]) r.future++; continue; }
       const c = dayCalc(d);
       for (const k of ['revenue', 'store', 'takeout', 'transfers', 'ing', 'fees', 'expenses', 'review', 'reviewIng', 'qty']) r[k] += c[k];
-      if (d <= t) { r.shareSoFar += c.share; r.netSoFar += c.net; }
+      r.shareSoFar += c.share; r.netSoFar += c.net;
       if (c.qty > 0) r.daysWithSales++;
       const day = S.days[d];
       for (const m of S.menus) {
         const q = menuQty(day, m.id); if (!q) continue;
         const e = (r.menus[m.id] ||= { qty: 0, sales: 0, cost: 0 });
         e.qty += q; e.cost += q * menuCost(m, d);
-        for (const ch of S.channels) { const qq = num(day.sales[m.id][ch.id]) || 0; e.sales += qq * (priceOf(m, ch.id) ?? priceOf(m, 'store') ?? 0); }
+        for (const ch of S.channels) { const qq = num(day.sales[m.id][ch.id]) || 0; e.sales += qq * (priceOf(m, ch.id, d) || 0); }
       }
     }
     r.fixed = monthFixed(month);
@@ -630,26 +661,44 @@ function monthCalc(month) {
     r.netShown = r.cur ? r.netSoFar : r.net;
     const menuRev = r.revenue - r.transfers;
     r.avgRate = menuRev > 0 ? r.ing / menuRev : avgMenuRate();
-    r.breakEven = r.avgRate < 1 ? r.fixed / (1 - r.avgRate) : 0;
-    r.bought = S.purchases.filter(p => p.type === 'ing' && monthOf(p.date) === month).reduce((a, p) => a + (num(p.paid) || 0), 0);
+    r.varRate = menuRev > 0 ? (r.ing + r.fees + r.expenses + r.review) / menuRev : r.avgRate;
+    r.beImpossible = r.fixed > 0 && r.varRate >= 1;
+    r.breakEven = r.fixed > 0 && r.varRate < 1 ? r.fixed / (1 - r.varRate) : 0;
+    r.bought = S.purchases.filter(p => p.type === 'ing' && !p.priceEdit && monthOf(p.date) === month).reduce((a, p) => a + (num(p.paid) || 0), 0);
     return r;
   });
 }
 function avgMenuRate() { const xs = S.menus.map(m => { const p = priceOf(m, 'store'); return p ? menuCost(m, today()) / p : null; }).filter(x => x != null); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0.35; }
 function avgDailyQty() {
-  return memo('adq', () => { let tot = 0, n = 0; for (let i = 0; i < 30; i++) { const d = addDays(today(), -i); if (!S.days[d]) continue; const q = dayCalc(d).qty; if (q > 0) { tot += q; n++; } } return n ? { v: tot / n, auto: true, n } : { v: num(S.settings.fallbackQty) || 0, auto: false }; });
+  return memo('adq', () => { let tot = 0, n = 0; for (let i = 1; i <= 30; i++) { const d = addDays(today(), -i); if (!S.days[d]) continue; const q = dayCalc(d).qty; if (q > 0) { tot += q; n++; } } return n ? { v: tot / n, auto: true, n } : { v: num(S.settings.fallbackQty) || 0, auto: false }; });
 }
 const unitShare = () => { const a = avgDailyQty(); return a.v ? dailyShare(monthOf(today())) / a.v : 0; };
+// 가게 배달 1건에 실제로 든 돈 (최근 30일 기록 평균)
+function ownFeeAvg() {
+  return memo('ofa', () => { let c = 0, o = 0; for (let i = 1; i <= 30; i++) { const d = S.days[addDays(today(), -i)]; if (!d || d.ownCost == null || d.ownCost === '') continue; const n = ordersOf(d, 'own'); if (n) { c += num(d.ownCost) || 0; o += n; } } return o ? c / o : 0; });
+}
+// 포장·배달 1건(메뉴 1개)에 드는 포장재 값
+function packCost(m) {
+  let c = 0;
+  for (const s of S.supplies) {
+    const r = s.rule || {}, cnt = num(r.count) || 0; if (!cnt || !num(s.price)) continue;
+    if (r.mode === 'order' || (r.mode === 'menu' && (r.menuId === 'all' || r.menuId === m.id))) c += cnt * num(s.price) / packInfo({ type: 'sup', o: s }).size;
+  }
+  return c;
+}
 function menuNet(m, ch) {
   const price = priceOf(m, ch.id); if (price == null) return null;
-  const cost = menuCost(m, today()); const v = vatF(ch);
-  const pctFee = ch.kind === 'store' ? 0 : price * pctOf(ch) * v;
-  const delFee = ch.kind === 'store' ? 0 : (num(ch.fee) || 0) * v;
+  const cost = menuCost(m, today()); const v = vatF(ch), store = ch.kind === 'store';
+  const pctFee = store ? 0 : price * pctOf(ch) * v;
+  const perOrder = ch.kind === 'own' && !num(ch.fee) ? ownFeeAvg() : (num(ch.fee) || 0) * v;
+  const delFee = store ? 0 : perOrder;
+  const pack = store ? 0 : packCost(m);
   const share = unitShare();
   const fee = pctFee + delFee;
-  const net = price - cost - fee - share;
-  const be = (1 - pctOf(ch) * (ch.kind === 'store' ? 0 : v)) > 0 ? (cost + delFee + share) / (1 - (ch.kind === 'store' ? 0 : pctOf(ch) * v)) : null;
-  return { price, cost, pctFee, delFee, fee, share, net, gross: price - cost, be: be && ceilTo(be, 100) };
+  const net = price - cost - fee - pack - share;
+  const k = 1 - (store ? 0 : pctOf(ch) * v);
+  const be = k > 0 ? (cost + delFee + pack + share) / k : null;
+  return { price, cost, pctFee, delFee, pack, fee, share, net, gross: price - cost, be: be && ceilTo(be, 100) };
 }
 
 /* 재고 */
@@ -702,7 +751,8 @@ function autoUsage(item, date) {
 function usage(item, date) { const man = S.days[date]?.used?.[item.o.id]; return man != null ? man : autoUsage(item, date); }
 function stockAt(item, upto) {
   return memo('sa' + item.o.id + upto, () => {
-    const o = item.o, a = o.anchor || { date: '0000-00-00', ts: 0, qty: 0, usageAtAnchor: 0 };
+    const o = item.o, as = o.anchors && o.anchors.length ? o.anchors : [{ date: '0000-00-00', ts: 0, qty: 0, usageAtAnchor: 0 }];
+    let a = as[0]; for (const x of as) if (x.date <= upto) a = x;  // upto 이전의 가장 늦은 기준점
     const ps = purchasesOf(o.id).filter(p => p.addsToStock);
     const dates = Object.keys(S.days);
     let s;
@@ -722,7 +772,7 @@ function stockAt(item, upto) {
 function dailyUseAuto(item) {
   return memo('du' + item.o.id, () => {
     let tot = 0, n = 0;
-    for (let i = 0; i < 7; i++) { const d = addDays(today(), -i); if (!S.days[d] || dayCalc(d).qty <= 0) continue; tot += usage(item, d); n++; }
+    for (let i = 1; i <= 7; i++) { const d = addDays(today(), -i); if (!S.days[d] || dayCalc(d).qty <= 0) continue; tot += usage(item, d); n++; }
     return n ? tot / n : null;
   });
 }
@@ -735,7 +785,7 @@ function stockStatus(item) {
     const days = du ? st / du : null;
     const red = num(S.settings.redDays) ?? 1, yel = num(S.settings.yellowDays) ?? 3;
     let lv;
-    if (minB && st <= minB) lv = 'red';
+    if (st <= 0 || (minB && st <= minB)) lv = 'red';
     else if (days == null) lv = 'gray';
     else if (days <= red) lv = 'red'; else if (days <= yel) lv = 'yellow'; else lv = 'green';
     return { lv, st, du, auto, days, pi };
@@ -744,7 +794,7 @@ function stockStatus(item) {
 const LV = { red: '위험', yellow: '조심', green: '양호', gray: '계산 중' };
 const lvOrder = { red: 0, yellow: 1, gray: 2, green: 3 };
 const stChip = lv => `<span class="st st-${lv}"><span class="dot" aria-hidden="true"></span>${LV[lv]}</span>`;
-const daysTxt = s => s.days == null ? '계산 중' : `${fmtQ(s.days, 1)}일 버텨요`;
+const daysTxt = s => s.st <= 0 ? '다 떨어졌어요' : s.days == null ? '계산 중' : `${fmtQ(s.days, 1)}일 버텨요`;
 function stockLists() { return memo('sl', () => { const xs = stockItems().map(it => ({ it, s: stockStatus(it) })); return { red: xs.filter(x => x.s.lv === 'red'), yellow: xs.filter(x => x.s.lv === 'yellow') }; }); }
 
 /* ============ 화면: 공통 ============ */
@@ -882,7 +932,7 @@ ${isSup ? `<button type="button" class="btn-del" data-a="delSup" data-id="${id}"
 <div class="fld"><label>한 번에 사는 단위</label>${IT('st.pack:' + id, o.packText, isSup ? '예: 50개 묶음' : `예: ${(o.buyText || '1 kg').replace(/\s+/g, '')} 봉지`, nameOf(it) + ' 단위', 'sm num')}<div class="hint">&nbsp;</div></div>
 <div class="fld"><label>마지막에 산 양</label>${IT('st.last:' + id, lp ? packTxt(it, lp.qty) : '', '예: 2 ' + pi.name, nameOf(it) + ' 산 양', 'sm num')}<div class="hint">${lp ? mmdd(lp.date) + '에 샀어요' : '&nbsp;'}</div></div>
 <div class="fld"><label>지금 남은 양</label>${IT('st.now:' + id + ':' + today(), packTxt(it, s.st), '예: 0.5 ' + pi.name, nameOf(it) + ' 남은 양', 'sm num')}<div class="hint">${baseTxt(it, s.st)}</div></div>
-<div class="fld" style="flex-basis:190px"><label>하루에 쓰는 양</label>${IT('st.use:' + id, o.dailyManual != null ? fmtS(o.dailyManual) + ' ' + pi.unit : '', s.auto != null ? fmtS(s.auto) + ' ' + pi.unit + ' (자동)' : '비어 있음 (계산 중)', nameOf(it) + ' 하루 쓰는 양', 'sm num')}<div class="hint">${useHint}</div></div>
+<div class="fld" style="flex-basis:190px"><label>하루에 쓰는 양 (${esc(pi.unit)})</label>${IT('st.use:' + id, o.dailyManual != null ? fmtS(o.dailyManual) + ' ' + pi.unit : '', s.auto != null ? fmtS(s.auto) + ' ' + pi.unit + ' (자동)' : '비어 있음 (계산 중)', nameOf(it) + ' 하루 쓰는 양', 'sm num')}<div class="hint">${useHint}</div></div>
 <div class="fld"><label>이 밑이면 위험</label>${IT('st.min:' + id, o.minPacks != null ? fmtQ(o.minPacks, 2) + ' ' + pi.name : '', '예: 1 ' + pi.name, nameOf(it) + ' 최소 재고', 'sm num')}<div class="hint">&nbsp;</div></div>
 ${isSup ? `<div class="fld"><label>한 ${esc(pi.name)} 가격 (원)</label>${IN('sup.price:' + id, money(o.price), '예: 18,000', o.name + ' 가격', 'sm')}<div class="hint">&nbsp;</div></div>
 <div class="fld wide"><span class="lb">어디에 써요? (고칠 수 있어요)</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -921,16 +971,17 @@ function viewMenu() {
   const badD = S.channels.filter(c => isTakeout(c)).map(c => ({ c, n: menuNet(m, c) })).filter(x => x.n && x.n.net < 0);
   if (badD.length) { const w = badD.sort((a, b) => a.n.net - b.n.net)[0]; warns.push(`${w.c.short}에서는 ${won(w.n.price)}원에 팔아도 적자라서 ${won(w.n.be)}원 이상이어야 남아요.${badD.length > 1 ? ` (적자인 곳: ${badD.map(x => x.c.short).join(', ')})` : ''} 아니면 한 주문에 여러 개 묶어서 팔아야 해요.`); }
   const adq = avgDailyQty(), share = unitShare(), ds = dailyShare(monthOf(t));
+  const badLines = menuErrs(m);
   return `<div class="col" style="gap:6px"><h1 class="h1">메뉴에 재료와 양을 넣어요</h1><p class="lead">평소 말하는 단위 그대로 적으면 돼요. 큰술, 작은술, 온스, 개, g 다 돼요.</p></div>
 <div class="row">
 <div class="stat"><span class="l">이 메뉴 1개 재료비</span><span class="v">${W(cost)}</span>${rate != null ? `<span class="s" style="${over ? 'color:var(--r);font-weight:700' : ''}">재료비 비율 ${fmtQ(rate, 0)}%${over ? ` · 목표 ${target}% 넘음` : ''}</span>` : ''}</div>
-<div class="stat"><label class="l" for="price-store">파는 가격 (매장)</label><div class="unit"><input id="price-store" class="inp big num" inputmode="decimal" data-k="menu.price:${m.id}:store" value="${esc(money(sp))}" placeholder="9,500"><span style="font-size:24px;font-weight:700;color:var(--ink)">원</span></div><span class="s">배민·쿠팡이츠·요기요·네이버 가격은 아래에서 따로 정해요.</span></div>
+<div class="stat"><label class="l" for="price-store">파는 가격 (매장)</label><div class="unit"><input id="price-store" class="inp big num" inputmode="decimal" data-k="menu.price:${m.id}:store:top" value="${esc(money(sp))}" placeholder="9,500"><span style="font-size:24px;font-weight:700;color:var(--ink)">원</span></div><span class="s">배민·쿠팡이츠·요기요·네이버 가격은 아래에서 따로 정해요.</span></div>
 ${storeN ? `<div class="stat ${storeN.net >= 0 ? 'good' : 'bad'}"><span class="l">매장에서 1개 팔면 순 마진</span><span class="v">${SW(storeN.net)}</span><span class="s">재료비만 뺀 남는 돈 ${W(storeN.gross)}${rate != null ? ` (재료비 비율 ${fmtQ(rate, 0)}%)` : ''}</span></div>` : ''}
 ${dN ? `<div class="stat ${dN.net >= 0 ? 'good' : 'bad'}"><span class="l">${esc(dCh.short)}에서 ${won(dN.price)}원에 1개 팔면 순 마진</span><span class="v">${SW(dN.net)}</span><span class="s">수수료·배달비·매달 나가는 돈 몫까지 뺀 값</span></div>` : ''}
 </div>
 <div class="row" style="align-items:flex-start">
 <aside class="menu-list" aria-label="내 메뉴"><div class="mut" style="font-size:15px;padding:0 6px">내 메뉴</div>
-${S.menus.map(x => { const p = priceOf(x, 'store'); const r = p ? menuCost(x, t) / p * 100 : null; return `<button type="button" class="ml" data-a="selMenu" data-id="${x.id}" aria-current="${x.id === m.id}"><span>${esc(x.name || '(이름 없음)')}</span>${r != null && r > target ? `<span class="tag tag-red">${fmtQ(r, 0)}%</span>` : ''}</button>`; }).join('')}
+${S.menus.map(x => { const p = priceOf(x, 'store'); const r = p ? menuCost(x, t) / p * 100 : null; return `<button type="button" class="ml" data-a="selMenu" data-id="${x.id}" aria-current="${x.id === m.id}"><span>${esc(x.name || '(이름 없음)')}</span>${menuErrs(x) ? '<span class="tag tag-red">계산 못 한 재료</span>' : r != null && r > target ? `<span class="tag tag-red">${fmtQ(r, 0)}%</span>` : ''}</button>`; }).join('')}
 <button type="button" class="btn-add" data-a="addMenu" style="margin-top:6px">+ 메뉴 추가</button></aside>
 <div class="card" style="flex:1 1 640px">
 <div class="titlebar"><div style="flex:1 1 300px"><label class="mut" style="font-size:14px" for="mname">메뉴 이름</label>${`<input id="mname" class="inp" style="font-size:22px;font-weight:700" data-k="menu.name:${m.id}" value="${esc(m.name)}" placeholder="예: 우삽겹 파스타">`}</div><button type="button" class="btn-del" data-a="delMenu" data-id="${m.id}">이 메뉴 지우기</button></div>
@@ -939,6 +990,7 @@ ${S.menus.map(x => { const p = priceOf(x, 'store'); const r = p ? menuCost(x, t)
 <tfoot><tr><td colspan="2">합계 재료비</td><td class="r" style="font-size:20px">${W(cost)}</td><td></td></tr></tfoot></table></div>
 <div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn-line" data-a="addLine" data-id="${m.id}" ${S.ingredients.length ? '' : 'disabled'}>+ 재료 넣기</button><button type="button" class="btn-line" data-a="addFixedLine" data-id="${m.id}">+ 고정 금액 넣기 (소금·후추처럼)</button></div>
 ${S.ingredients.length ? '' : '<div class="hint">먼저 "1 재료" 화면에서 재료를 추가해요.</div>'}
+${badLines ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>재료비를 계산 못 한 재료가 ${badLines}개 있어요. 그 재료는 0원으로 들어가서 재료비가 실제보다 적게 나와요. 빨간 안내를 보고 고쳐 주세요.</span></div>` : ''}
 ${warns.length ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>${warns.map(esc).join(' ')}</span></div>` : ''}
 <div style="background:var(--bg);border-radius:12px;padding:14px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
 <span style="font-weight:700">재료비 비율을</span><div class="unit"><input class="inp sm num" style="width:80px" inputmode="decimal" data-k="set.target" value="${esc(target)}" aria-label="목표 재료비 비율"><span>%</span></div><span style="font-weight:700">로 맞추고 싶다면?</span>
@@ -952,22 +1004,25 @@ ${feeCard()}
 ${S.menus.map(x => marginTable(x)).join('')}
 <div class="row">
 ${storeN ? `<div class="card" style="flex:1 1 320px;background:var(--bg);border:0"><div class="h3">${esc(josa(m.name, "을", "를"))} 매장에서 ${won(storeN.price)}원에 팔면</div><div class="calc"><div><span>파는 가격</span><span>${W(storeN.price)}</span></div><div><span>재료비</span><span>${minus(storeN.cost)}</span></div><div><span>매달 나가는 돈 몫</span><span>${minus(storeN.share)}</span></div><div class="tot"><span>순 마진</span><span class="${storeN.net >= 0 ? 'pos' : 'neg'}">${SW(storeN.net)}</span></div></div></div>` : ''}
-${dN ? `<div class="card" style="flex:1 1 320px;background:var(--bg);border:0"><div class="h3">${esc(josa(m.name, "을", "를"))} ${esc(dCh.short)}에서 ${won(dN.price)}원에 팔면</div><div class="calc"><div><span>파는 가격</span><span>${W(dN.price)}</span></div><div><span>재료비</span><span>${minus(dN.cost)}</span></div><div><span>앱 수수료와 결제 수수료${dCh.vat ? ' (부가세 포함)' : ''}</span><span>${minus(dN.pctFee)}</span></div><div><span>배달비${dCh.vat ? ' (부가세 포함)' : ''}</span><span>${minus(dN.delFee)}</span></div><div><span>매달 나가는 돈 몫</span><span>${minus(dN.share)}</span></div><div class="tot"><span>순 마진</span><span class="${dN.net >= 0 ? 'pos' : 'neg'}">${SW(dN.net)}</span></div></div></div>` : ''}
+${dN ? `<div class="card" style="flex:1 1 320px;background:var(--bg);border:0"><div class="h3">${esc(josa(m.name, "을", "를"))} ${esc(dCh.short)}에서 ${won(dN.price)}원에 팔면</div><div class="calc"><div><span>파는 가격</span><span>${W(dN.price)}</span></div><div><span>재료비</span><span>${minus(dN.cost)}</span></div><div><span>앱 수수료와 결제 수수료${dCh.vat ? ' (부가세 포함)' : ''}</span><span>${minus(dN.pctFee)}</span></div><div><span>배달비${dCh.vat ? ' (부가세 포함)' : ''}</span><span>${minus(dN.delFee)}</span></div>${dN.pack ? `<div><span>포장재 (용기·봉투·휴지 등)</span><span>${minus(dN.pack)}</span></div>` : ''}<div><span>매달 나가는 돈 몫</span><span>${minus(dN.share)}</span></div><div class="tot"><span>순 마진</span><span class="${dN.net >= 0 ? 'pos' : 'neg'}">${SW(dN.net)}</span></div></div></div>` : ''}
 </div>
 <div class="notes">
 <span>매달 나가는 돈 몫 ${W(share)} = 하루 몫 ${W(ds)} ÷ 하루에 파는 개수 ${fmtQ(adq.v, 0)}개${adq.auto ? ` (최근 30일 중 판매한 ${adq.n}일 평균)` : ''}예요. 메뉴 가격과 상관없이 한 개마다 똑같이 나눠서 빼요.</span>
 ${adq.auto ? '' : `<span>아직 판매 기록이 없어서 하루에 파는 개수를 임시로 <input class="inp sm num" style="width:80px;display:inline-block;min-height:36px;padding:4px 8px" inputmode="decimal" data-k="set.fallbackQty" value="${esc(S.settings.fallbackQty)}" aria-label="임시 하루 판매 개수">개로 계산해요. 오늘 기록을 적으면 자동으로 바뀌어요.</span>`}
+<span>가격·매출은 손님이 내는 부가세 포함 금액 기준이에요. 부가세·종합소득세는 "매달 나가는 돈"에 적립액으로 넣어요.</span>
+<span>포장·배달 순 마진에는 재고 화면의 "어디에 써요?"와 포장재 가격으로 계산한 포장재 값도 빠져 있어요. 매장 카드 수수료는 메뉴별로는 빼지 않고, 오늘 기록의 쓴 돈에 적어요.</span>
 <span>주문 한 건에 메뉴가 1개일 때 기준이에요. 메뉴 화면의 "남는 돈"은 재료비만 뺀 값이고, "순 마진"은 수수료·배달비와 매달 나가는 돈 몫까지 뺀 값이에요. 이번 달 남는 돈에서는 매달 나가는 돈을 가게 전체에서 한 번만 빼요.</span>
 </div>
 </div>`;
 }
 const minus = n => '− ' + W(n);
+const menuErrs = m => m.recipe.filter(l => lineCalc(l, today()).err).length;
 function marginTable(m) {
   const cost = menuCost(m, today());
   return `<div class="mhead"><b>${esc(m.name || '(이름 없음)')}</b><span class="mut">재료비 ${W(cost)}</span></div>
-<div class="tw"><table class="t" style="min-width:640px"><thead><tr><th>어디서 팔아요</th><th style="width:200px">파는 가격</th><th class="r">수수료·배달비</th><th class="r">순 마진</th></tr></thead><tbody>
+<div class="tw"><table class="t" style="min-width:640px"><thead><tr><th>어디서 팔아요</th><th style="width:200px">파는 가격</th><th class="r">수수료·배달비·포장재</th><th class="r">순 마진</th></tr></thead><tbody>
 ${S.channels.map(ch => { const n = menuNet(m, ch); return `<tr><td>${esc(ch.name)}</td><td><div class="unit">${IN('menu.price:' + m.id + ':' + ch.id, money(m.prices?.[ch.id]), '안 팔아요', m.name + ' ' + ch.short + ' 파는 가격', 'sm')}<span>원</span></div></td>
-<td class="r">${n ? (ch.kind === 'store' ? '없음' : W(n.fee)) : '-'}</td>
+<td class="r">${n ? (ch.kind === 'store' ? '없음' : `${W(n.fee + n.pack)}${n.pack ? `<div class="hint">포장재 ${W(n.pack)} 포함</div>` : ''}`) : '-'}</td>
 <td class="r ${n && n.net <= 0 ? 'cell-bad' : ''}">${n ? `<div style="font-weight:900;font-size:18px" class="${n.net > 0 ? 'pos' : 'neg'}">${SW(n.net)}</div><div class="hint">재료비만 뺀 ${W(n.gross)}</div>` : '<span class="mut">안 팔아요</span>'}</td></tr>`; }).join('')}
 </tbody></table></div>`;
 }
@@ -984,7 +1039,7 @@ ${S.channels.map(ch => {
   }).join('')}
 <tr><td><b>계좌이체</b></td><td colspan="3" class="mut">수수료 없음, 들어온 돈이 그대로 매출이 돼요 (오늘 기록에서 적어요)</td><td></td><td></td></tr>
 </tbody></table></div>
-<div class="notes"><span>배민·쿠팡이츠 6.8%, 요기요 9.7%, 카드 3%, 배달비 3,000원은 2026년 10월 조사 기본값이고 매출 구간과 계약에 따라 달라요(배민·쿠팡이츠 2.0~7.8%, 요기요 4.7~9.7%). 정산서를 보고 한 번 맞춰 주세요.</span><span>네이버 포장의 결제 수수료 3%는 확인된 값이 아니라 가정이에요.</span><span>가게 배달은 대행료나 직원 몫을 "주문 1건 배달비"에 적어 두면 메뉴별 비교에 쓰고, 그날 실제로 든 돈은 오늘 기록에서 직접 적어요.</span></div>
+<div class="notes"><span>배민·쿠팡이츠 6.8%, 요기요 9.7%, 카드 3%, 배달비 3,000원은 2026년 10월 조사 기본값이고 매출 구간과 계약에 따라 달라요(배민·쿠팡이츠 2.0~7.8%, 요기요 4.7~9.7%). 정산서를 보고 한 번 맞춰 주세요.</span><span>네이버 포장의 결제 수수료 3%는 확인된 값이 아니라 가정이에요.</span><span>가게 배달은 대행료나 직원 몫을 "주문 1건 배달비"에 적어 두면 메뉴별 비교에 쓰고, 그날 실제로 든 돈은 오늘 기록에서 직접 적어요. 0으로 두면 오늘 기록에 적은 최근 30일 평균(주문 1건 ${W(ownFeeAvg())})으로 계산해요.</span></div>
 </div>`;
 }
 
@@ -996,8 +1051,8 @@ function viewToday() {
   const chs = S.channels;
   const salesRows = S.menus.map(m => {
     const row = day?.sales?.[m.id] || {};
-    let sum = 0; for (const ch of chs) sum += (num(row[ch.id]) || 0) * (priceOf(m, ch.id) ?? priceOf(m, 'store') ?? 0);
-    return `<tr><td><b>${esc(m.name || '(이름 없음)')}</b><div class="hint">${priceOf(m, 'store') != null ? W(priceOf(m, 'store')) : '가격 없음'}</div></td>${chs.map(ch => `<td>${IN(`sale:${m.id}:${ch.id}`, row[ch.id] ? row[ch.id] : '', '0', `${m.name} ${ch.short} 판매 수`, 'sm')}</td>`).join('')}<td class="r" style="font-weight:700">${W(sum)}</td></tr>`;
+    let sum = 0; for (const ch of chs) sum += (num(row[ch.id]) || 0) * (priceOf(m, ch.id, D) || 0);
+    return `<tr><td><b>${esc(m.name || '(이름 없음)')}</b><div class="hint">${priceOf(m, 'store') != null ? W(priceOf(m, 'store')) : '가격 없음'}</div></td>${chs.map(ch => { const np = priceOf(m, ch.id, D) == null; if (np && !num(row[ch.id])) return `<td class="mut" style="font-size:14px;text-align:center">안 팔아요</td>`; return `<td>${IN(`sale:${m.id}:${ch.id}`, row[ch.id] ? row[ch.id] : '', '0', `${m.name} ${ch.short} 판매 수`, 'sm')}${np ? '<div class="hint err">가격 없음</div>' : ''}</td>`; }).join('')}<td class="r" style="font-weight:700">${W(sum)}</td></tr>`;
   }).join('');
   const items = stockItems().sort((a, b) => lvOrder[stockStatus(a).lv] - lvOrder[stockStatus(b).lv]);
   const past = []; for (let i = 1; i <= 7; i++) past.push(addDays(D, -i));
@@ -1022,6 +1077,8 @@ function viewToday() {
 <div class="card">
 <div class="h2">팔린 메뉴</div><div class="mut" style="font-size:15px">어디서 팔렸는지 나눠서 적어요. 배달앱, 네이버 포장, 가게 배달은 수수료가 달라서 따로 계산해요.</div>
 ${S.menus.length ? `<div class="tw"><table class="t" style="min-width:${300 + chs.length * 100}px"><thead><tr><th>메뉴</th>${chs.map(ch => `<th>${esc(ch.short)}</th>`).join('')}<th class="r">합계</th></tr></thead><tbody>${salesRows}</tbody></table></div>` : '<div class="mut">메뉴가 없어요. "2 메뉴" 화면에서 추가해요.</div>'}
+${c.missing.length ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>가격이 없는 칸에 판매 수가 적혀 있어요: ${esc(c.missing.join(', '))}. 매출은 0원, 재료비만 빠져요. 메뉴 화면에서 그 판매처 가격을 적어 주세요.</span></div>` : ''}
+<div class="mut" style="font-size:14px">"안 팔아요"는 메뉴 화면에서 그 판매처 가격을 비워 둔 칸이에요. 가격을 적으면 여기에 판매 수를 적을 수 있어요.</div>
 <div class="okbox">재료비는 팔린 수만큼 자동으로 빠져요. 장보기 영수증은 따로 안 적어도 돼요 (재구매 버튼으로 기록해요).</div>
 </div>
 <div class="row" style="align-items:flex-start">
@@ -1045,6 +1102,7 @@ ${day.reviews.map(r => { const m = r.menuId && findMenu(r.menuId); const per = m
 </div></div>
 <div class="card">
 <div class="h2">어디서 얼마 팔았고, 실제로 얼마 받나요</div>
+${(() => { const bl = chs.filter(ch => c.per[ch.id].ordersBlank); return bl.length ? `<div class="warnbox" style="background:var(--ybg);color:var(--ytx)"><span class="ic" aria-hidden="true" style="background:var(--y)">!</span><span>주문 건수를 비워 둔 곳이 있어요: ${bl.map(ch => `${esc(ch.short)}(메뉴 ${c.per[ch.id].qty}개 → ${c.per[ch.id].qty}건으로 계산)`).join(', ')}. 한 주문에 여러 개를 시켰다면 건수를 적어 주세요. 비워 두면 배달비가 더 많이 빠져요.</span></div>` : ''; })()}
 <div class="tw"><table class="t" style="min-width:820px"><thead><tr><th>판 곳</th><th class="r">매출</th><th style="width:130px">주문 몇 건?</th><th>수수료와 배달비</th><th class="r">받는 돈</th></tr></thead><tbody>
 ${chs.map(ch => { const p = c.per[ch.id];
     if (ch.kind === 'store') return `<tr><td><b>매장</b></td><td class="r">${W(p.sales)}</td><td class="mut">-</td><td class="mut">카드 수수료는 쓴 돈에 적어요</td><td class="r" style="font-weight:700">${W(p.received)}</td></tr>`;
@@ -1061,7 +1119,7 @@ ${(day?.transfers || []).map((tr, i) => `<tr><td><b>계좌이체</b><div class="
 <div class="h2">쓴 재료와 포장재, 남은 재고</div>
 <div class="mut" style="font-size:15px">쓴 양은 팔린 수로 자동으로 채워져 있어요. 실제로 다르게 썼으면 그 칸을 고쳐 주세요. 마감하고 남은 양을 세어 적으면 재고가 정확해져요. 포장재는 "어디에 써요?"에 적어 둔 대로 빠져요.</div>
 <div class="legend">${stChip('red')}<span>하루도 못 버텨요</span>${stChip('yellow')}<span>곧 사야 해요</span>${stChip('green')}<span>넉넉해요</span>${stChip('gray')}<span>계산 중</span></div>
-<div class="tw"><table class="t" style="min-width:780px"><thead><tr><th>이름</th><th style="width:190px">쓴 양</th><th style="width:190px">마감 후 남은 양</th><th>버틸 날수</th><th>상태</th></tr></thead><tbody>
+<div class="tw"><table class="t" style="min-width:780px"><thead><tr><th>이름</th><th style="width:190px">쓴 양 <span style="font-weight:400">(숫자만 적으면 g·ml·개)</span></th><th style="width:190px">마감 후 남은 양</th><th>버틸 날수</th><th>상태</th></tr></thead><tbody>
 ${items.map(it => { const s = stockStatus(it), st = stockAt(it, D), man = day?.used?.[it.o.id], au = autoUsage(it, D), pi = s.pi; const dd = s.du ? st / s.du : null;
     return `<tr><td><b>${esc(nameOf(it))}</b></td><td>${IT('used:' + it.o.id, man != null ? fmtS(man) + ' ' + pi.unit : '', fmtS(au) + ' ' + pi.unit, nameOf(it) + ' 쓴 양', 'sm num')}<div class="hint">${man != null ? `<span class="mine">직접 고침</span> · 자동 ${fmtS(au)} ${pi.unit} <button type="button" class="linkbtn" data-a="clearUsed" data-id="${it.o.id}">자동으로</button>` : '자동'}</div></td>
 <td>${IT('st.now:' + it.o.id + ':' + D, packTxt(it, st), '0', nameOf(it) + ' 남은 양', 'sm num')}<div class="hint">${baseTxt(it, st)}</div></td><td>${dd == null ? '<span class="mut">계산 중</span>' : fmtQ(dd, 1) + '일'}</td><td>${stChip(s.lv)}</td></tr>`; }).join('') || '<tr><td colspan="5" class="mut">재료나 포장재가 없어요.</td></tr>'}
@@ -1079,8 +1137,9 @@ ${past.map(d => { const x = dayCalc(d); return `<tr><td><button type="button" cl
 function viewMonth() {
   const M = ui.month, r = monthCalc(M), t = today(), cur = M === monthOf(t);
   const good = r.netShown >= 0;
-  const max = Math.max(r.revenue, r.breakEven, 1);
+  const max = Math.max(r.revenue, r.breakEven || 0, 1);
   const days = cur ? Number(t.slice(8)) : daysInMonth(M);
+  const bd = businessDays(M);
   const groups = { '임대료': 0, '인건비': 0, '공과금': 0, '기타 매달 나가는 돈': 0 };
   const fr = r.fixed ? r.fixedShown / r.fixed : 0;
   for (const f of S.fixedCosts) { const a = fixedAmount(f, M) * fr; const n = f.name || ''; if (/임대|월세|관리비/.test(n)) groups['임대료'] += a; else if (/인건|4대|급여|알바|보험/.test(n)) groups['인건비'] += a; else if (/전기|수도|가스|공과/.test(n)) groups['공과금'] += a; else groups['기타 매달 나가는 돈'] += a; }
@@ -1090,17 +1149,16 @@ function viewMonth() {
   const rank = S.menus.map(m => ({ m, e: r.menus[m.id] || { qty: 0, sales: 0, cost: 0 } })).sort((a, b) => b.e.qty - a.e.qty);
   const computed = r.ing + r.reviewIng;
   const diff = computed ? (r.bought - computed) / computed * 100 : null;
-  const bd = businessDays(M);
   return `<div class="titlebar"><h1 class="h1">이번 달에 얼마 남았을까요?</h1>
 <div class="nav"><button type="button" class="navb" data-a="month" data-v="-1" aria-label="지난달">‹</button><div class="navl">${mLabel(M)}</div><button type="button" class="navb" data-a="month" data-v="1" aria-label="다음 달">›</button></div></div>
 <div class="hero ${good ? 'good' : 'bad'}" style="flex-direction:column;align-items:stretch;gap:22px">
 <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px">
 <div class="col" style="gap:4px"><span class="hlab">이번 달 남는 돈</span><span class="hv" style="font-size:68px">${MW(r.netShown)}</span>${cur ? `<span class="hs">오늘까지 기준이에요</span>` : ''}</div>
-<div class="col" style="gap:4px;text-align:right"><span class="hlab">${r.breakEven ? (r.revenue >= r.breakEven ? `본전 매출 ${W(r.breakEven)}을 넘었어요` : `본전 매출 ${W(r.breakEven)}까지 ${W(r.breakEven - r.revenue)} 남았어요`) : '매달 나가는 돈을 적으면 본전 매출을 알려드려요'}</span><span class="hs">하루 평균 매출 ${W(r.daysWithSales ? r.revenue / r.daysWithSales : 0)}${cur ? ` · 오늘까지 ${days}일째` : ''}</span></div>
+<div class="col" style="gap:4px;text-align:right"><span class="hlab">${r.beImpossible ? '지금은 팔수록 손해예요. 재료비·수수료·쓴 돈이 매출보다 많아요' : r.breakEven ? (r.revenue >= r.breakEven ? `본전 매출 ${W(r.breakEven)}을 넘었어요` : `본전 매출 ${W(r.breakEven)}까지 ${W(r.breakEven - r.revenue)} 남았어요`) : '매달 나가는 돈을 적으면 본전 매출을 알려드려요'}</span><span class="hs">하루 평균 매출 ${W(r.daysWithSales ? r.revenue / r.daysWithSales : 0)}${cur ? ` · 오늘까지 ${days}일째` : ''}</span></div>
 </div>
 ${r.breakEven ? `<div class="col" style="gap:8px"><div class="bar"><div class="fill" style="width:${Math.min(100, r.revenue / max * 100)}%"></div><div class="mark" style="left:${r.breakEven / max * 100}%"></div></div>
 <div class="barlbl"><span style="left:0">0원</span><span style="left:${Math.min(80, Math.max(20, r.breakEven / max * 100))}%;transform:translateX(-50%);font-weight:700;color:var(--ink)">본전 ${W(r.breakEven)}</span><span style="right:0">지금 ${W(r.revenue)}</span></div></div>` : ''}
-<div class="hs">남는 돈 = 매출 − 재료비 − 수수료·배달비 − 쓴 돈 − 리뷰 이벤트 − 매달 나가는 돈. 본전 매출 = 매달 나가는 돈 ÷ (1 − 평균 재료비 비율 ${fmtQ(r.avgRate * 100, 0)}%).${cur ? ` 아직 달이 끝나지 않아서 매달 나가는 돈은 오늘까지 영업일 몫(${W(r.shareSoFar)})만 뺐어요. 남은 날 몫 ${W(r.fixed - r.shareSoFar)}은 앞으로 벌어서 메워야 해요. 한 달치를 다 빼면 지금은 ${MW(r.net)}이에요.` : ''}</div>
+<div class="hs">남는 돈 = 매출 − 재료비 − 수수료·배달비 − 쓴 돈 − 리뷰 이벤트 − 매달 나가는 돈. 본전 매출 = 매달 나가는 돈 ÷ (1 − 매출에서 재료비·수수료·쓴 돈·리뷰 이벤트가 차지하는 비율 ${fmtQ(r.varRate * 100, 0)}%).${cur ? ` 아직 달이 끝나지 않아서 매달 나가는 돈은 오늘까지 영업일 몫(${W(r.shareSoFar)})만 뺐어요. 남은 날 몫 ${W(r.fixed - r.shareSoFar)}은 앞으로 벌어서 메워야 해요. 한 달치를 다 빼면 지금은 ${MW(r.net)}이에요.` : ''}</div>
 </div>
 <div class="row">
 <div class="stat"><span class="l">이번 달 매출</span><span class="v">${W(r.revenue)}</span></div>
@@ -1112,6 +1170,8 @@ ${r.breakEven ? `<div class="col" style="gap:8px"><div class="bar"><div class="f
 </div>
 <div class="card">
 <div class="h2">번 돈이 어디로 갔을까요?</div>
+${r.future ? `<div class="mut" style="font-size:15px">앞날에 미리 적어 둔 기록 ${r.future}일은 그날이 되면 더해져요.</div>` : ''}
+${bd === 0 && r.fixed ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>이번 달 영업일이 0일이라 매달 나가는 돈이 하루 기록에서 빠지지 않아요. 쉬는 요일을 확인해 주세요.</span></div>` : ''}
 <div class="stack" role="img" aria-label="${segs.map(s => `${s[0]} ${won(s[1])}원`).join(', ')}">${segs.filter(s => s[1] > 0).map(s => `<div style="width:${s[1] / tot * 100}%;background:${s[2]}" title="${s[0]} ${W(s[1])}"></div>`).join('')}</div>
 <div class="lg">${segs.filter(s => s[1] > 0).map(s => `<div><i style="background:${s[2]}"></i>${s[0]} <b>${won(s[1])}</b></div>`).join('')}</div>
 ${r.netShown < 0 ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>나간 돈이 매출보다 ${W(-r.netShown)} 많아요.</span></div>` : ''}${cur ? '<div class="mut" style="font-size:14px">매달 나가는 돈은 오늘까지 몫으로 나눠서 보여줘요.</div>' : ''}
@@ -1127,12 +1187,12 @@ ${rank.map((x, i) => `<tr><td>${i + 1}</td><td><b>${esc(x.m.name)}</b></td><td c
 </div>
 <div class="card">
 <div class="h2">매달 나가는 돈</div>
-<div class="mut" style="font-size:16px">한 번 적어두면 다음 달에도 같은 금액이 들어가요. 바뀌는 달만 고치면 돼요 (지금 보고 있는 ${mLabel(M)}부터 바뀌어요). 부가세·종합소득세처럼 몰아서 내는 돈은 "1년치"에 체크하고 1년 금액을 적으면 12로 나눠서 넣어요.</div>
+<div class="mut" style="font-size:16px">한 번 적어두면 다음 달에도 같은 금액이 들어가요. 바뀌는 달만 고치면 돼요. ${M < monthOf(t) ? `지난달(${mLabel(M)})을 고치면 그달만 바뀌어요.` : `지금 보고 있는 ${mLabel(M)}부터 바뀌어요.`} 부가세·종합소득세처럼 몰아서 내는 돈은 "1년치"에 체크하고 1년 금액을 적으면 12로 나눠서 넣어요.</div>
 <div class="tw"><table class="t plain" style="min-width:640px"><tbody>
 ${S.fixedCosts.map(f => { const raw = fixedRaw(f, M); return `<tr><td>${IT('fx.name:' + f.id, f.name, '예: 임대료', '항목 이름')}</td><td style="width:220px"><div class="unit">${IN('fx.amount:' + f.id, raw == null ? '' : money(raw), '예: 1,500,000', '금액')}<span>원</span></div></td><td style="width:280px"><label class="chk"><input type="checkbox" data-k="fx.annual:${f.id}" ${f.annual ? 'checked' : ''}>1년치${f.annual ? ` <span class="mut">→ 한 달 ${W(fixedAmount(f, M))}</span>` : ''}</label></td><td style="width:70px"><button type="button" class="btn-del" data-a="delFx" data-id="${f.id}">지우기</button></td></tr>`; }).join('')}
 </tbody></table></div>
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px"><button type="button" class="btn-line" data-a="addFx">+ 항목 추가</button><div style="font-size:18px">합계 <b style="font-size:24px">${W(r.fixed)}</b></div></div>
-<div style="background:var(--bg);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px"><b>쉬는 요일</b><div style="display:flex;flex-wrap:wrap;gap:4px 16px">${WD.map((w, i) => `<label class="chk"><input type="checkbox" data-k="set.closed:${i}" ${(S.settings.closedWeekdays || []).includes(i) ? 'checked' : ''}>${w}요일</label>`).join('')}</div>
+<div style="background:var(--bg);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px"><b>쉬는 요일 <span class="mut" style="font-weight:400;font-size:15px">(${mLabel(M)}부터 바뀌어요. 지난달은 그대로예요)</span></b><div style="display:flex;flex-wrap:wrap;gap:4px 16px">${WD.map((w, i) => `<label class="chk"><input type="checkbox" data-k="set.closed:${i}" ${closedFor(M).includes(i) ? 'checked' : ''}>${w}요일</label>`).join('')}</div>
 <span class="mut" style="font-size:15px">${mLabel(M)} 영업일 ${bd}일 · 하루 몫 ${W(dailyShare(M))}. 특별히 쉰 날은 오늘 기록 화면에서 "쉬는 날"에 체크해요.</span></div>
 </div>
 <div class="card">
@@ -1150,36 +1210,83 @@ ${fileState === 'ok' ? `<div class="okbox"><b>장부가 이 파일에 자동으�
 }
 
 /* ============ 렌더 ============ */
-function render() {
-  const ae = document.activeElement;
-  let fk = null, raw = null, ss = null, se = null;
-  if (ae && app.contains(ae) && ae.dataset && ae.dataset.k) { fk = ae.dataset.k; raw = ae.value; try { ss = ae.selectionStart; se = ae.selectionEnd; } catch {} }
-  const open = [...app.querySelectorAll('details[open][data-keep]')].map(d => d.dataset.keep);
-  app.innerHTML = view();
-  for (const k of open) { const d = app.querySelector(`details[data-keep="${k}"]`); if (d) d.open = true; }
-  if (fk) {
-    const el = app.querySelector(`[data-k="${CSS.escape(fk)}"]`);
-    if (el) { if (el.type !== 'checkbox') el.value = raw; el.focus({ preventScroll: true }); try { if (ss != null) el.setSelectionRange(ss, se); } catch {} }
+// 화면을 통째로 갈아끼우지 않고 바뀐 부분만 고친다. 입력 중인 칸은 그대로 두어 커서·한글 조합이 끊기지 않게 한다.
+let rendering = false;
+function morphChildren(from, to) {
+  const fc = [...from.childNodes], tc = [...to.childNodes];
+  for (let i = 0; i < tc.length; i++) {
+    const t = tc[i], f = fc[i];
+    if (!f) { from.appendChild(t); continue; }
+    if (f.nodeType !== t.nodeType || (f.nodeType === 1 && (f.tagName !== t.tagName || (f.getAttribute('data-k') || '') !== (t.getAttribute('data-k') || '')))) { from.replaceChild(t, f); continue; }
+    if (f.nodeType !== 1) { if (f.nodeValue !== t.nodeValue) f.nodeValue = t.nodeValue; continue; }
+    morphEl(f, t);
   }
+  for (let i = tc.length; i < fc.length; i++) fc[i].remove();
+}
+function morphEl(from, to) {
+  for (const a of [...from.attributes]) if (!to.hasAttribute(a.name) && !(a.name === 'open' && from.tagName === 'DETAILS')) from.removeAttribute(a.name);
+  for (const a of [...to.attributes]) if (from.getAttribute(a.name) !== a.value) from.setAttribute(a.name, a.value);
+  const active = from === document.activeElement;
+  if (from.tagName === 'INPUT') {
+    if (from.type === 'checkbox') from.checked = to.hasAttribute('checked');
+    else if (!active) { const v = to.getAttribute('value') ?? ''; if (from.value !== v) from.value = v; }
+    return;
+  }
+  morphChildren(from, to);
+  if (from.tagName === 'SELECT' && !active) { const o = [...to.querySelectorAll('option')].find(x => x.hasAttribute('selected')); from.value = o ? o.value : (from.options[0]?.value ?? ''); }
+}
+function render() {
+  if (rendering) return;
+  rendering = true;
+  try {
+    const ae = document.activeElement;
+    let fk = null, raw = null, ss = null, se = null;
+    if (ae && app.contains(ae) && ae.dataset && ae.dataset.k) { fk = ae.dataset.k; raw = ae.value; try { ss = ae.selectionStart; se = ae.selectionEnd; } catch {} }
+    const tpl = document.createElement('template');
+    tpl.innerHTML = view();
+    const next = tpl.content.firstElementChild, cur = app.firstElementChild;
+    if (cur && cur.tagName === next.tagName) morphEl(cur, next); else app.replaceChildren(next);
+    // 구조가 바뀌어 입력 칸이 새로 만들어졌으면 커서를 되돌려 놓는다
+    if (fk && !document.contains(ae)) {
+      const el = app.querySelector(`[data-k="${CSS.escape(fk)}"]`);
+      if (el) { if (el.type !== 'checkbox') el.value = raw; el.focus({ preventScroll: true }); try { if (ss != null) el.setSelectionRange(ss, se); } catch {} }
+    }
+  } finally { rendering = false; }
 }
 function renderStatus() { const el = document.getElementById('status'); if (el) el.innerHTML = statusHtml(); }
 
 /* ============ 입력 처리 ============ */
 const setNum = v => { const n = num(v); return n == null ? null : n; };
 const setWon = v => { const n = num(v); return n == null ? null : Math.round(n); };
+// 오늘 날짜의 가격 기록. 마지막 기록이 예전 날짜면 오늘자 가격 변경 기록을 새로 만든다 (지난 날 재료비는 그대로)
+function priceRecord(ing) {
+  const p = lastPurchase(ing.id), t = today();
+  if (p && p.date === t) return p;
+  const n = { id: uid(), itemId: ing.id, type: 'ing', date: t, ts: Date.now(), qty: p ? p.qty : (baseInfo(ing).qty || 0), paid: p ? p.paid : 0, leftover: null, rawUnit: p ? p.rawUnit : 0, addsToStock: false, anchored: false, priceEdit: true };
+  S.purchases.push(n); C = {};
+  return n;
+}
+function recomputeRaw(ing, p) {
+  if (!p.qty) { p.rawUnit = 0; return; }
+  if (p.leftover != null) {
+    const prev = purchasesOf(ing.id).filter(x => x !== p && (x.date < p.date || (x.date === p.date && x.ts < p.ts))).pop();
+    p.rawUnit = (p.leftover * (prev ? prev.rawUnit || 0 : 0) + (p.paid || 0)) / (p.leftover + p.qty);
+  } else p.rawUnit = (p.paid || 0) / p.qty;
+}
 function setPurchaseQty(item, p, q) {
   const delta = q - p.qty; p.qty = q;
-  if (!p.addsToStock && p.anchored && item.o.anchor && item.o.anchor.ts === p.ts) item.o.anchor.qty = Math.max(0, item.o.anchor.qty + delta);
+  const a = (item.o.anchors || []).find(x => x.ts === p.ts);
+  if (!p.addsToStock && p.anchored && a) a.qty = Math.max(0, a.qty + delta);
 }
 const F = {
   'ing.name': (id, _, v) => commit(() => { findIng(id).name = v; }, 'in' + id),
-  'ing.buyText': (id, _, v) => commit(() => { const ing = findIng(id); ing.buyText = v; const p = lastPurchase(id); if (!p) return; const q = baseInfo(ing).qty || 0; setPurchaseQty({ type: 'ing', o: ing }, p, q); p.rawUnit = q ? (p.paid || 0) / q : 0; p.leftover = null; }, 'ib' + id),
-  'ing.paid': (id, _, v) => commit(() => { const p = lastPurchase(id); if (!p) return; p.paid = setWon(v) || 0; p.rawUnit = p.qty ? p.paid / p.qty : 0; p.leftover = null; }, 'ip' + id),
+  'ing.buyText': (id, _, v) => commit(() => { const ing = findIng(id); ing.buyText = v; const p = priceRecord(ing); setPurchaseQty({ type: 'ing', o: ing }, p, baseInfo(ing).qty || 0); recomputeRaw(ing, p); }, 'ib' + id),
+  'ing.paid': (id, _, v) => commit(() => { const ing = findIng(id); const p = priceRecord(ing); p.paid = setWon(v) || 0; recomputeRaw(ing, p); }, 'ip' + id),
   'ing.yield': (id, _, v) => commit(() => { const n = num(v); findIng(id).yield = n == null ? 100 : Math.min(100, Math.max(1, n)); }, 'iy' + id),
   'ing.conv': (id, f, v) => commit(() => { const ing = findIng(id); ing.conv = ing.conv || {}; ing.conv[f] = setNum(v); }, 'ic' + id + f),
   'st.pack': (id, _, v) => commit(() => { findItem(id).o.packText = v; }, 'sp' + id),
-  'st.last': (id, _, v) => { const it = findItem(id), p = lastPurchase(id), q = parseStockInput(it, v); if (!p || q == null) return; commit(() => { setPurchaseQty(it, p, q); if (it.type === 'ing') { p.paid = Math.round((p.rawUnit || 0) * q); it.o.buyText = fmtBase(q, baseUnit(it.o)); } else p.paid = Math.round((num(it.o.price) || 0) * q / packInfo(it).size); }, 'sl' + id); },
-  'st.now': (id, date, v) => { const it = findItem(id), q = parseStockInput(it, v); if (q == null) return; commit(() => { it.o.anchor = { date, ts: Date.now(), qty: q, usageAtAnchor: usage(it, date) }; it.o.anchorAuto = false; }, 'sn' + id + date); },
+  'st.last': (id, _, v) => { const it = findItem(id), p = lastPurchase(id), q = parseStockInput(it, v); if (!p || q == null) return; commit(() => { const old = p.qty; setPurchaseQty(it, p, q); p.paid = Math.round(old ? (p.paid || 0) * q / old : (p.paid || 0)); if (it.type === 'ing') it.o.buyText = fmtBase(q, baseUnit(it.o)); }, 'sl' + id); },
+  'st.now': (id, date, v) => { const it = findItem(id), q = parseStockInput(it, v); if (q == null) return; commit(() => { setAnchor(it.o, { date, ts: Date.now(), qty: q, usageAtAnchor: usage(it, date) }); it.o.anchorAuto = false; }, 'sn' + id + date); },
   'st.use': (id, _, v) => { const it = findItem(id); commit(() => { it.o.dailyManual = String(v).trim() ? parseUseInput(it, v) : null; }, 'su' + id); },
   'st.min': (id, _, v) => { const it = findItem(id); commit(() => { const p = parseAmt(v); if (!p) { it.o.minPacks = null; return; } const b = parseStockInput(it, v); it.o.minPacks = b == null ? null : b / packInfo(it).size; }, 'sm' + id); },
   'sup.name': (id, _, v) => commit(() => { findSup(id).name = v; }, 'sn' + id),
@@ -1188,22 +1295,29 @@ const F = {
   'sup.menu': (id, _, v) => commit(() => { findSup(id).rule.menuId = v; }),
   'sup.count': (id, _, v) => commit(() => { findSup(id).rule.count = setNum(v); }, 'sc' + id),
   'menu.name': (id, _, v) => commit(() => { findMenu(id).name = v; }, 'mn' + id),
-  'menu.price': (id, ch, v) => commit(() => { const m = findMenu(id); m.prices = m.prices || {}; m.prices[ch] = setWon(v); }, 'mp' + id + ch),
+  'menu.price': (id, ch, v) => commit(() => { setMenuPrice(findMenu(id), ch, setWon(v)); }, 'mp' + id + ch),
   'line.ing': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).ingId = v; }),
   'line.text': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).text = v; }, 'lt' + lid),
   'line.label': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).label = v; }, 'll' + lid),
   'line.won': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).won = setWon(v); }, 'lw' + lid),
   'ch.name': (id, _, v) => commit(() => { const c = findCh(id); c.name = v; c.short = v; }, 'cn' + id),
-  'ch.app': (id, _, v) => commit(() => { const c = findCh(id); c.app = setNum(v) ?? 0; c.edited = Object.assign({}, c.edited, { app: true }); }, 'ca' + id),
-  'ch.pay': (id, _, v) => commit(() => { const c = findCh(id); c.pay = setNum(v) ?? 0; c.edited = Object.assign({}, c.edited, { pay: true }); }, 'cp' + id),
-  'ch.fee': (id, _, v) => commit(() => { const c = findCh(id); c.fee = setWon(v) ?? 0; c.edited = Object.assign({}, c.edited, { fee: true }); }, 'cf' + id),
-  'ch.vat': (id, _, v, el) => commit(() => { findCh(id).vat = el.checked; }),
+  'ch.app': (id, _, v) => commit(() => { const c = findCh(id); setCh(c, { app: setNum(v) ?? 0 }); c.edited = Object.assign({}, c.edited, { app: true }); }, 'ca' + id),
+  'ch.pay': (id, _, v) => commit(() => { const c = findCh(id); setCh(c, { pay: setNum(v) ?? 0 }); c.edited = Object.assign({}, c.edited, { pay: true }); }, 'cp' + id),
+  'ch.fee': (id, _, v) => commit(() => { const c = findCh(id); setCh(c, { fee: setWon(v) ?? 0 }); c.edited = Object.assign({}, c.edited, { fee: true }); }, 'cf' + id),
+  'ch.vat': (id, _, v, el) => commit(() => { setCh(findCh(id), { vat: el.checked }); }),
   'set.target': (_, __, v) => commit(() => { S.settings.targetRate = setNum(v) || 30; }, 'st'),
   'set.fallbackQty': (_, __, v) => commit(() => { S.settings.fallbackQty = setNum(v); }, 'sfq'),
   'set.redDays': (_, __, v) => commit(() => { S.settings.redDays = setNum(v) ?? 1; }, 'srd'),
   'set.yellowDays': (_, __, v) => commit(() => { S.settings.yellowDays = setNum(v) ?? 3; }, 'syd'),
-  'set.closed': (i, _, v, el) => commit(() => { const w = Number(i); const a = new Set(S.settings.closedWeekdays || []); el.checked ? a.add(w) : a.delete(w); S.settings.closedWeekdays = [...a].sort(); }),
-  'day.closed': (_, __, v, el) => commit(() => { const d = dayOf(ui.date, true); const wdClosed = (S.settings.closedWeekdays || []).includes(pdate(ui.date).getDay()); d.closed = el.checked === wdClosed ? undefined : el.checked; if (d.closed === undefined) delete d.closed; }),
+  'set.closed': (i, _, v, el) => commit(() => {
+    const w = Number(i), M = ui.month, st = S.settings;
+    if (!st.closedHist) st.closedHist = [{ from: '0000-00', days: [...(st.closedWeekdays || [])] }];
+    const a = new Set(closedFor(M)); el.checked ? a.add(w) : a.delete(w);
+    const e = st.closedHist.find(x => x.from === M);
+    if (e) e.days = [...a].sort(); else { st.closedHist.push({ from: M, days: [...a].sort() }); st.closedHist.sort((x, y) => x.from.localeCompare(y.from)); }
+    st.closedWeekdays = closedFor(monthOf(today()));
+  }),
+  'day.closed': (_, __, v, el) => commit(() => { const d = dayOf(ui.date, true); const wdClosed = closedFor(monthOf(ui.date)).includes(pdate(ui.date).getDay()); d.closed = el.checked === wdClosed ? undefined : el.checked; if (d.closed === undefined) delete d.closed; }),
   'sale': (mid, ch, v) => commit(() => { const d = dayOf(ui.date, true); d.sales[mid] = d.sales[mid] || {}; const n = setNum(v); if (n == null) delete d.sales[mid][ch]; else d.sales[mid][ch] = Math.max(0, Math.round(n)); }, 'sa' + ui.date + mid + ch),
   'ord': (ch, _, v) => commit(() => { const d = dayOf(ui.date, true); d.orders = d.orders || {}; const n = setNum(v); if (n == null) delete d.orders[ch]; else d.orders[ch] = Math.max(0, Math.round(n)); }, 'or' + ui.date + ch),
   'day.ownCost': (_, __, v) => commit(() => { dayOf(ui.date, true).ownCost = setWon(v); }, 'oc' + ui.date),
@@ -1217,7 +1331,8 @@ const F = {
   'tr.memo': (id, _, v) => commit(() => { dayOf(ui.date, true).transfers.find(x => x.id === id).memo = v; }, 'tm' + id),
   'used': (id, _, v) => { const it = findItem(id); commit(() => { const d = dayOf(ui.date, true); d.used = d.used || {}; if (!String(v).trim()) delete d.used[id]; else { const q = parseUseInput(it, v); if (q != null) d.used[id] = q; } }, 'us' + ui.date + id); },
   'fx.name': (id, _, v) => commit(() => { S.fixedCosts.find(f => f.id === id).name = v; }, 'fn' + id),
-  'fx.amount': (id, _, v) => commit(() => { const f = S.fixedCosts.find(x => x.id === id); const M = ui.month; const a = setWon(v) ?? 0; const h = f.hist.find(x => x.from === M); if (h) h.amount = a; else { f.hist.push({ from: M, amount: a }); f.hist.sort((x, y) => x.from.localeCompare(y.from)); } }, 'fa' + id + ui.month),
+  'fx.amount': (id, _, v) => commit(() => { const f = S.fixedCosts.find(x => x.id === id); const M = ui.month; const a = setWon(v) ?? 0; const N = addMonths(M, 1);
+    if (M < monthOf(today()) && !f.hist.some(x => x.from === N)) { const keep = fixedRaw(f, N); if (keep != null) { f.hist.push({ from: N, amount: keep }); f.hist.sort((x, y) => x.from.localeCompare(y.from)); } } const h = f.hist.find(x => x.from === M); if (h) h.amount = a; else { f.hist.push({ from: M, amount: a }); f.hist.sort((x, y) => x.from.localeCompare(y.from)); } }, 'fa' + id + ui.month),
   'fx.annual': (id, _, v, el) => commit(() => { S.fixedCosts.find(f => f.id === id).annual = el.checked; }),
 };
 function handleField(el) {
@@ -1226,9 +1341,9 @@ function handleField(el) {
   const fn = F[f]; if (!fn) return;
   try { fn(a, b, el.value, el); } catch (e) { console.error(e); }
 }
-app.addEventListener('input', e => { const el = e.target; if (el.tagName === 'SELECT' || el.type === 'checkbox') return; handleField(el); });
-app.addEventListener('change', e => { const el = e.target; if (el.tagName === 'SELECT' || el.type === 'checkbox') handleField(el); else if (el.dataset.k) { lastKey = null; render(); } });
-app.addEventListener('focusout', e => { if (e.target.dataset && e.target.dataset.k && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') setTimeout(() => { if (!app.contains(document.activeElement) || !document.activeElement.dataset.k) render(); }, 0); });
+app.addEventListener('input', e => { if (rendering) return; const el = e.target; if (el.tagName === 'SELECT' || el.type === 'checkbox') return; handleField(el); });
+app.addEventListener('change', e => { if (rendering) return; const el = e.target; if (el.tagName === 'SELECT' || el.type === 'checkbox') handleField(el); else if (el.dataset.k) { lastKey = null; render(); } });
+app.addEventListener('focusout', e => { if (rendering) return; if (e.target.dataset && e.target.dataset.k && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') setTimeout(() => { if (!app.contains(document.activeElement) || !document.activeElement.dataset.k) render(); }, 0); });
 
 /* ============ 버튼 ============ */
 function closePops(except) { document.querySelectorAll('details[name="stock"][open]').forEach(d => { if (d !== except) d.open = false; }); }
@@ -1248,7 +1363,7 @@ const A = {
   gotoFees: () => { ui.tab = 'menu'; render(); document.getElementById('fees')?.scrollIntoView({ behavior: 'smooth' }); },
   addIng: () => { commit(() => { mkIng(S, { name: '' }, today(), Date.now()); }); const ins = app.querySelectorAll('[data-k^="ing.name:"]'); ins[ins.length - 1]?.focus(); },
   delIng: d => { const ing = findIng(d.id); const used = S.menus.filter(m => m.recipe.some(l => l.ingId === d.id)).map(m => m.name); confirmDel(`"${ing.name || '이름 없는 재료'}"를 지울까요?`, used.length ? `이 재료가 들어간 메뉴(${used.join(', ')})의 레시피에서도 빠져요.` : '재고 카드와 구매 기록도 같이 지워져요.', () => commit(() => { S.ingredients = S.ingredients.filter(x => x.id !== d.id); S.purchases = S.purchases.filter(p => p.itemId !== d.id); for (const m of S.menus) m.recipe = m.recipe.filter(l => l.ingId !== d.id); }), '재료를 지웠어요'); },
-  kind: d => commit(() => { const ing = findIng(d.id); ing.kind = d.v; const p = lastPurchase(d.id); if (p) { const q = baseInfo(ing).qty || 0; p.qty = q; p.rawUnit = q ? (p.paid || 0) / q : 0; } }),
+  kind: d => commit(() => { const ing = findIng(d.id); ing.kind = d.v; const q = baseInfo(ing).qty || 0; const lp = lastPurchase(d.id); if (lp && lp.qty === q) return; const p = priceRecord(ing); setPurchaseQty({ type: 'ing', o: ing }, p, q); recomputeRaw(ing, p); }),
   units: d => { ui.openUnits[d.id] = !ui.openUnits[d.id]; render(); },
   rebuy: d => { closePops(); openRebuy(d.id); },
   addSup: () => { commit(() => { mkSup(S, { name: '', packText: '100개 묶음', packs: 1 }, today(), Date.now()); }); const ins = app.querySelectorAll('[data-k^="sup.name:"]'); ins[ins.length - 1]?.focus(); },
@@ -1264,7 +1379,7 @@ const A = {
   delLine: d => commit(() => { const m = findMenu(d.id); m.recipe = m.recipe.filter(l => l.id !== d.v); }),
   addCh: () => commit(() => { S.channels.push({ id: uid(), name: '전화 주문', short: '전화 주문', kind: 'custom', app: 0, pay: 0, fee: 0, vat: false, custom: true, edited: {} }); }),
   delCh: d => { const c = findCh(d.id); confirmDel(`"${c.name}" 판매처를 지울까요?`, '이 판매처로 적은 판매 수량도 계산에서 빠져요.', () => commit(() => { S.channels = S.channels.filter(x => x.id !== d.id); }), '판매처를 지웠어요'); },
-  applyRates: () => commit(() => { for (const c of S.rateNotice?.changes || []) if (!c.applied) { const ch = findCh(c.id); if (ch) { ch[c.f] = c.nw; if (ch.edited) delete ch.edited[c.f]; } } S.rateNotice = null; }),
+  applyRates: () => commit(() => { for (const c of S.rateNotice?.changes || []) if (!c.applied) { const ch = findCh(c.id); if (ch) { setCh(ch, { [c.f]: c.nw }); if (ch.edited) delete ch.edited[c.f]; } } S.rateNotice = null; }),
   dismissRates: () => { S.rateNotice = null; C = {}; scheduleSave(); render(); },
   day: d => { ui.date = addDays(ui.date, Number(d.v)); render(); },
   dayToday: () => { ui.date = today(); render(); },
@@ -1301,7 +1416,7 @@ function openRebuy(id) {
   const defLeft = isIng ? fmtS(st) + ' ' + pi.unit : packTxt(it, st);
   dlg.innerHTML = `<form method="dialog" class="dlg"><div class="dt">${esc(nameOf(it))} 재구매</div><div class="ds">시장에서 다시 사 온 날 눌러요. 가격이 오르내리면 여기서 바뀌어요.</div>
 <div class="dfs">
-<div><label for="rb-qty">오늘 산 양</label><input id="rb-qty" class="inp" value="${esc(defQty)}" placeholder="${isIng ? '예: 1 kg' : '예: 2 ' + esc(pi.name)}"></div>
+<div><label for="rb-qty">오늘 산 양</label><input id="rb-qty" class="inp" value="${esc(defQty)}" placeholder="${isIng ? '예: 1 kg 또는 2 ' + esc(pi.name) : '예: 2 ' + esc(pi.name)}"></div>
 <div><label for="rb-paid">낸 돈 (원)</label><input id="rb-paid" class="inp num" inputmode="decimal" value="${esc(defPaid ? won(defPaid) : '')}" placeholder="예: 15,000"></div>
 <div><label for="rb-left">남아 있던 양 (모르면 비워두세요)</label><input id="rb-left" class="inp" value="${esc(defLeft)}" placeholder="비우면 새 가격으로 바로 바꿔요"></div>
 ${isIng ? '' : `<label class="chk" style="font-weight:500"><input type="checkbox" id="rb-exp" checked>낸 돈을 오늘 쓴 돈에도 적기</label>`}
@@ -1311,13 +1426,16 @@ ${isIng ? '' : `<label class="chk" style="font-weight:500"><input type="checkbox
   const qEl = dlg.querySelector('#rb-qty'), pEl = dlg.querySelector('#rb-paid'), lEl = dlg.querySelector('#rb-left'), pv = dlg.querySelector('#rb-pv');
   const calc = () => {
     let q, err = null;
-    if (isIng) { const p = parseAmt(qEl.value); if (!p) err = '산 양을 적어 주세요'; else { const b = toBase(o, p.n, p.unit || baseUnit(o)); if (b.err) err = b.err; else q = b.v; } }
+    const ingQ = txt => { const p = parseAmt(txt); if (!p) return { err: '산 양을 적어 주세요' }; if (PACKW.includes(p.unit) || p.unit === pi.name.toLowerCase()) return { v: p.n * pi.size, pack: true }; const b = toBase(o, p.n, p.unit || baseUnit(o)); return b.err ? { err: b.err } : { v: b.v }; };
+    let pack = false;
+    if (isIng) { const r = ingQ(qEl.value); if (r.err) err = r.err; else { q = r.v; pack = r.pack; } }
     else { q = parseStockInput(it, qEl.value); if (q == null) err = '산 양을 적어 주세요'; }
     const paid = num(pEl.value) || 0;
-    const left = lEl.value.trim() ? (isIng ? (() => { const p = parseAmt(lEl.value); if (!p) return null; const b = toBase(o, p.n, p.unit || baseUnit(o)); return b.err ? null : b.v; })() : parseStockInput(it, lEl.value)) : null;
+    const left = lEl.value.trim() ? (isIng ? (ingQ(lEl.value).v ?? null) : parseStockInput(it, lEl.value)) : null;
+    const measured = left != null && lEl.value.trim() !== defLeft;  // 사장님이 직접 고친 남은 양이면 재고를 그 값으로 맞춘다
     let raw = null;
     if (isIng && q) raw = left != null ? (left * rawUnitAt(o, today()) + paid) / (left + q) : paid / q;
-    return { q, paid, left, raw, err };
+    return { q, paid, left, raw, err, pack, measured };
   };
   const upd = () => {
     const c = calc();
@@ -1336,11 +1454,11 @@ ${isIng ? '' : `<label class="chk" style="font-weight:500"><input type="checkbox
     dlg.close();
     commit(() => {
       const ts = Date.now(), t = today();
-      const p = { id: uid(), itemId: id, type: it.type, date: t, ts, qty: c.q, paid: Math.round(c.paid), leftover: c.left, addsToStock: c.left == null, anchored: c.left != null };
-      if (isIng) { p.rawUnit = c.raw; o.buyText = qEl.value.trim(); }
+      const p = { id: uid(), itemId: id, type: it.type, date: t, ts, qty: c.q, paid: Math.round(c.paid), leftover: c.left, addsToStock: !c.measured, anchored: c.measured };
+      if (isIng) { p.rawUnit = c.raw; o.buyText = c.pack ? fmtBase(c.q, baseUnit(o)) : qEl.value.trim(); }
       else if (c.paid && c.q) o.price = Math.round(c.paid / (c.q / pi.size));
       S.purchases.push(p);
-      if (c.left != null) o.anchor = { date: t, ts, qty: c.left + c.q, usageAtAnchor: usage(it, t) };
+      if (c.measured) setAnchor(o, { date: t, ts, qty: c.left + c.q, usageAtAnchor: usage(it, t) });
       o.anchorAuto = false;
       if (addExp && c.paid) dayOf(t, true).expenses.push({ id: uid(), name: o.name || '포장재', amount: Math.round(c.paid), memo: '재구매' });
     });
@@ -1358,7 +1476,7 @@ function openAdjust() {
     const b = e.target.closest('[data-d]'); if (!b) return;
     if (b.dataset.d === 'yes') {
       const ch = [...dlg.querySelectorAll('input[data-id]')].filter(x => x.value.trim()).map(x => { const it = findItem(x.dataset.id); return { it, q: parseStockInput(it, x.value) }; }).filter(x => x.q != null);
-      if (ch.length) { const t = today(); commit(() => { for (const { it, q } of ch) { it.o.anchor = { date: t, ts: Date.now(), qty: q, usageAtAnchor: usage(it, t) }; it.o.anchorAuto = false; } }); toast(`${ch.length}개 품목의 남은 양을 맞췄어요`, true); }
+      if (ch.length) { const t = today(); commit(() => { for (const { it, q } of ch) { setAnchor(it.o, { date: t, ts: Date.now(), qty: q, usageAtAnchor: usage(it, t) }); it.o.anchorAuto = false; } }); toast(`${ch.length}개 품목의 남은 양을 맞췄어요`, true); }
     }
     dlg.close();
   };
@@ -1436,12 +1554,12 @@ document.getElementById('importFile').addEventListener('change', async e => {
   confirmDel('백업 파일로 바꿀까요?', `${f.name}의 장부로 바꿔요. 지금 장부는 "되돌리기"로 돌아올 수 있어요.`, () => { commit(() => { S = migrate(d); }); ui.menuId = null; render(); }, '백업을 불러왔어요', '불러오기');
 });
 function exportCsv(M) {
-  const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const q = v => { let s = String(v ?? ''); if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const R = Math.round;
   const rows = [['날짜', '요일', '쉬는 날', '매출', '매장 매출', '배달·포장 매출', '계좌이체', '재료비', '수수료·배달비', '쓴 돈', '리뷰 이벤트', '매달 나가는 돈 하루 몫', '순 남는 돈']];
   for (const d of monthDates(M)) { if (!S.days[d] && d > today()) continue; const c = dayCalc(d); rows.push([d, WD[pdate(d).getDay()], c.closed ? 'O' : '', R(c.revenue), R(c.store), R(c.takeout), R(c.transfers), R(c.ing), R(c.fees), R(c.expenses), R(c.review), R(c.share), R(c.net)]); }
   const r = monthCalc(M);
-  rows.push([], ['합계'], ['월 매출', R(r.revenue)], ['월 재료비', R(r.ing)], ['수수료·배달비', R(r.fees)], ['쓴 돈', R(r.expenses)], ['리뷰 이벤트', R(r.review)], ['매달 나가는 돈', R(r.fixed)], ['이번 달 남는 돈' + (r.cur ? ' (오늘까지)' : ''), R(r.netShown)], ['한 달치 고정비를 다 뺀 값', R(r.net)], ['본전 매출', R(r.breakEven)], ['장 본 돈(재구매 기록)', R(r.bought)]);
+  rows.push([], ['합계'], ['월 매출', R(r.revenue)], ['월 재료비', R(r.ing)], ['수수료·배달비', R(r.fees)], ['쓴 돈', R(r.expenses)], ['리뷰 이벤트', R(r.review)], ['매달 나가는 돈', R(r.fixed)], ['이번 달 남는 돈' + (r.cur ? ' (오늘까지)' : ''), R(r.netShown)], ['한 달치 고정비를 다 뺀 값', R(r.net)], ['본전 매출', r.beImpossible ? '팔수록 손해' : R(r.breakEven)], ['장 본 돈(재구매 기록)', R(r.bought)]);
   rows.push([], ['매달 나가는 돈 항목', '금액']); for (const f of S.fixedCosts) rows.push([f.name, fixedAmount(f, M)]);
   rows.push([], ['쓴 돈 내역', '날짜', '금액', '메모']); for (const d of monthDates(M)) for (const e of S.days[d]?.expenses || []) rows.push([e.name, d, e.amount, e.memo]);
   rows.push([], ['메뉴', '판 개수', '매출']); for (const m of S.menus) { const e = r.menus[m.id]; if (e) rows.push([m.name, e.qty, R(e.sales)]); }
@@ -1465,7 +1583,7 @@ async function checkRates() {
       for (const f of ['app', 'pay', 'fee']) {
         if (vals[f] == null || Number(vals[f]) === num(ch[f])) continue;
         if (ch.edited?.[f]) changes.push({ id, f, old: num(ch[f]), nw: Number(vals[f]), applied: false });
-        else { changes.push({ id, f, old: num(ch[f]), nw: Number(vals[f]), applied: true }); ch[f] = Number(vals[f]); }
+        else { changes.push({ id, f, old: num(ch[f]), nw: Number(vals[f]), applied: true }); setCh(ch, { [f]: Number(vals[f]) }); }
       }
     }
     const first = !S.settings.ratesVersion;
