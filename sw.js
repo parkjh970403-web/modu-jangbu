@@ -1,5 +1,5 @@
 // 모두의장부 오프라인 캐시. 새 버전을 올리면 VERSION만 바꾸면 된다.
-const VERSION = 'mj-v3';
+const VERSION = 'mj-v5';
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -19,7 +19,7 @@ self.addEventListener('fetch', e => {
   }
   // 앱 화면: 네트워크 먼저(업데이트 반영), 끊기면 캐시
   if (req.mode === 'navigate' || (url.origin === location.origin && CORE.some(p => url.pathname.endsWith(p.replace('./', '/'))))) {
-    e.respondWith(fetch(req).then(res => { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); return res; }).catch(() => caches.match(req).then(r => r || caches.match('index.html'))));
+    e.respondWith(fetch(req.url, { cache: 'no-store', credentials: 'same-origin' }).then(res => { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); return res; }).catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match('index.html'))));
     return;
   }
   // 글꼴 등: 캐시 먼저

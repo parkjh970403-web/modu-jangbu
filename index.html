@@ -252,6 +252,7 @@ dialog::backdrop{background:rgba(23,35,28,.45)}
 <input type="file" id="importFile" accept=".json,application/json" hidden>
 <script>
 'use strict';
+const APP_VERSION = '2026-10-18';
 /* ============ 유틸 ============ */
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -286,7 +287,7 @@ const OZ = ['oz', '온스', '온즈'];
 const TBSP = ['큰술', '큰스푼', 'tbsp', '밥숟가락', '숟가락'];
 const TSP = ['작은술', '작은스푼', 'tsp', '티스푼'];
 const HANDFUL = ['줌', '한줌', '움큼'];
-const PIECE = ['개', '알', '쪽', '장', '마리', '덩이', '조각', 'ea', '구'];
+const PIECE = ['개', '알', '쪽', '장', '마리', '덩이', '조각', 'ea', '구', '개입', '입', '매', '매입', '과'];
 const PACKW = ['봉지', '통', '팩', '병', '묶음', '박스', '상자', '캔', '봉', '포대', '망', '단', '판', 'box', '롤', '타'];
 
 function parseAmt(text) {
@@ -317,14 +318,19 @@ function baseInfo(ing) {
   const fb = ing.kind === 'liquid' ? 'ml' : 'g';
   const p = parseAmt(ing.buyText);
   if (!p) return { base: fb, qty: null };
-  const eq = p.rest.match(/^[=:]\s*(.+)$/) || p.rest.match(/^\((.+)\)$/);
-  if (PIECE.includes(p.unit) && eq) {
+  const rest = p.rest.replace(/\s+/g, ' ').trim();
+  const eq = rest.match(/^[=:]\s*(.+)$/) || rest.match(/^\(\s*(\d.*)\)$/);
+  if ((PIECE.includes(p.unit) || PACKW.includes(p.unit)) && eq) {
     const q = parseAmt(eq[1]); const d = q && dimOf(q.unit, ing.kind);
     if (d && d.dim !== '개') return { base: d.dim, qty: p.n * q.n * d.f, cap: q.n * d.f };
   }
+  // 쿠팡식 "1kg x 2", "300g x 2개", "1kg 2팩"
+  const mul = rest.match(/^[x×*]\s*(\d+(?:\.\d+)?)\s*(?:개입|개|팩|봉지|봉|통|병|입|캔|ea|p)?$/i) || rest.match(/^(\d+(?:\.\d+)?)\s*(?:개입|개|팩|봉지|봉|통|병|입|캔)$/);
+  const k = mul ? Number(mul[1]) : 1;
   const d = dimOf(p.unit, ing.kind);
-  if (!d) return { base: fb, qty: p.unit ? null : p.n, err: p.unit ? `"${p.unit}" 대신 kg, g, L, ml, 개로 적어 주세요` : null };
-  return { base: d.dim, qty: p.n * d.f };
+  const bad = rest && !mul && !rest.startsWith('(') ? `"${rest}" 부분을 알아보기 어려워요. 예: 2 kg, 1kg x 2, 30 개, 1개 = 1L` : null;
+  if (!d) return { base: fb, qty: p.unit ? null : p.n * k, err: p.unit ? `"${p.unit}" 대신 kg, g, L, ml, 개로 적어 주세요 (예: 1통 = 3kg)` : bad };
+  return { base: d.dim, qty: p.n * d.f * k, err: bad };
 }
 const baseUnit = ing => baseInfo(ing).base;
 function toDim(ing, n, unit) {
@@ -349,7 +355,7 @@ function toBase(ing, n, unit) {
   const b = baseUnit(ing);
   if (r.dim === b) return { v: r.v };
   if (b === '개') { const pc = num(ing.conv?.piece); return pc ? { v: r.v / pc } : { err: `1개가 몇 ${r.dim}인지 재료 화면 "단위"에서 적어 주세요` }; }
-  return { v: r.v }; // g ↔ ml 은 1:1 로 본다
+  return { v: r.v, warn: `${b === 'g' ? '무게' : '액체'} 재료를 ${r.dim}로 적어서 1ml = 1g으로 계산했어요` }; // g ↔ ml 은 1:1 로 본다
 }
 function fmtBase(q, base) {
   if (q == null) return '';
@@ -544,13 +550,22 @@ const lastPurchase = id => { const ps = purchasesOf(id); return ps[ps.length - 1
 function rawUnitAt(ing, date) { const ps = purchasesOf(ing.id); if (!ps.length) return 0; let r = ps[0]; for (const p of ps) if (p.date <= date) r = p; return r.rawUnit || 0; }
 const yieldF = ing => Math.max(1, num(ing.yield) || 100) / 100;
 const effUnit = (ing, date) => rawUnitAt(ing, date) / yieldF(ing);
+const ingByName = name => { const k = String(name || '').trim(); return k ? S.ingredients.find(i => (i.name || '').trim() === k) || null : null; };
+const normQty = v => String(v ?? '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[．]/g, '.').replace(/[／]/g, '/').replace(/½/g, '1/2').replace(/¼/g, '1/4').replace(/¾/g, '3/4').replace(/\s*\/\s*/g, '/').trim();
+function qtyErr(q) {
+  const s = normQty(q); if (!s) return null;
+  if (!/^(\d+(\.\d+)?|\d{1,3}(,\d{3})+(\.\d+)?|\d+\/\d+|\d+ \d+\/\d+)$/.test(s)) return '숫자로 적어 주세요 (예: 80, 0.5, 1/2, 1 1/2)';
+  if (/\/0+$/.test(s)) return '0으로 나눌 수 없어요';
+  return null;
+}
 function lineCalc(line, date) {
   if (line.fixed) return { cost: num(line.won) || 0 };
-  const ing = findIng(line.ingId); if (!ing) return (line.name || '').trim() ? { cost: 0, err: '재료 목록에 없는 이름이에요', unknown: true } : { cost: 0, empty: true };
+  const ing = findIng(line.ingId) || ingByName(line.name); if (!ing) return (line.name || '').trim() ? { cost: 0, err: '재료 목록에 없는 이름이에요', unknown: true } : { cost: 0, empty: true };
+  if (line.unit != null) { const qe = qtyErr(line.qty); if (qe) return { cost: 0, err: qe }; }
   const p = parseAmt(line.text); if (!p) return { cost: 0, empty: true };
   if (p.unit === '원') return { cost: p.n, fixedWon: true };
   const b = toBase(ing, p.n, p.unit); if (b.err) return { cost: 0, err: b.err };
-  return { cost: b.v * effUnit(ing, date), base: b.v, gross: b.v / yieldF(ing), ing };
+  return { cost: b.v * effUnit(ing, date), base: b.v, gross: b.v / yieldF(ing), ing, warn: b.warn };
 }
 // 레시피 한 줄의 "쓰는 양"을 숫자와 단위로 나눠 보여준다
 const UNITS = ['g', 'kg', 'ml', 'L', '개', '큰술', '작은술', '온스', '줌'];
@@ -602,7 +617,17 @@ function chFee(ch, sales, orders, day) {
 }
 function closedFor(month) { const h = S.settings.closedHist; if (h && h.length) { let r = h[0].days; for (const x of h) if (x.from <= month) r = x.days; return r || []; } return S.settings.closedWeekdays || []; }
 function isClosed(date) { const d = S.days[date]; if (d && d.closed === true) return true; if (d && d.closed === false) return false; return closedFor(monthOf(date)).includes(pdate(date).getDay()); }
-function fixedAmount(f, month) { let a = null; for (const h of f.hist || []) if (h.from <= month) a = num(h.amount) || 0; if (a == null) return 0; return f.annual ? Math.round(a / 12) : a; }
+function fixedEntry(f, month) { let e = null; for (const h of f.hist || []) if (h.from <= month) e = h; return e; }
+const fxAnnual = (f, month) => { const e = fixedEntry(f, month); return e && e.annual != null ? e.annual : !!f.annual; };
+function fixedAmount(f, month) { const e = fixedEntry(f, month); if (!e) return 0; const a = num(e.amount) || 0; return fxAnnual(f, month) ? Math.round(a / 12) : a; }
+// 지난달을 고치면 그달만 바뀌도록 다음 달 값을 고정해 두고, 고칠 달의 항목을 돌려준다
+function fxEntryFor(f, M) {
+  const N = addMonths(M, 1), sortH = () => f.hist.sort((x, y) => x.from.localeCompare(y.from));
+  if (M < monthOf(today()) && !f.hist.some(x => x.from === N)) { const e = fixedEntry(f, N); if (e) { f.hist.push({ from: N, amount: e.amount, annual: fxAnnual(f, N) }); sortH(); } }
+  let h = f.hist.find(x => x.from === M);
+  if (!h) { const e = fixedEntry(f, M); h = { from: M, amount: e ? e.amount : 0, annual: fxAnnual(f, M) }; f.hist.push(h); sortH(); }
+  return h;
+}
 function fixedRaw(f, month) { let a = null; for (const h of f.hist || []) if (h.from <= month) a = h.amount; return a; }
 const monthFixed = month => memo('mf' + month, () => S.fixedCosts.reduce((a, f) => a + fixedAmount(f, month), 0));
 const businessDays = month => memo('bd' + month, () => monthDates(month).filter(d => !isClosed(d)).length);
@@ -674,7 +699,7 @@ function monthCalc(month) {
     r.avgRate = menuRev > 0 ? r.ing / menuRev : avgMenuRate();
     r.varRate = menuRev > 0 ? (r.ing + r.fees + r.expenses + r.review) / menuRev : r.avgRate;
     r.beImpossible = r.fixed > 0 && r.varRate >= 1;
-    r.breakEven = r.fixed > 0 && r.varRate < 1 ? r.fixed / (1 - r.varRate) : 0;
+    r.breakEven = r.fixed > 0 && r.varRate < 1 ? r.transfers + Math.max(0, r.fixed - r.transfers) / (1 - r.varRate) : 0;
     r.bought = S.purchases.filter(p => p.type === 'ing' && !p.priceEdit && monthOf(p.date) === month).reduce((a, p) => a + (num(p.paid) || 0), 0);
     return r;
   });
@@ -749,7 +774,7 @@ function autoUsage(item, date) {
     if (item.type === 'ing') {
       for (const m of S.menus) {
         const q = menuQty(day, m.id) + reviewQty(day, m.id); if (!q) continue;
-        for (const l of m.recipe) if (!l.fixed && l.ingId === item.o.id) { const c = lineCalc(l, date); if (c.gross) u += q * c.gross; }
+        for (const l of m.recipe) if (!l.fixed && (findIng(l.ingId) || ingByName(l.name))?.id === item.o.id) { const c = lineCalc(l, date); if (c.gross) u += q * c.gross; }
       }
     } else {
       const r = item.o.rule || {}, cnt = num(r.count) || 0;
@@ -874,7 +899,7 @@ function viewIng() {
     const conv = ing.conv || {};
     const cu = ing.kind === 'liquid' ? 'ml' : 'g';
     return `<tr>
-<td>${IT('ing.name:' + ing.id, ing.name, '예: 우삽겹', '재료 이름')}</td>
+<td>${IT('ing.name:' + ing.id, ing.name, '예: 우삽겹', '재료 이름')}${ing.name.trim() && S.ingredients.some(x => x !== ing && (x.name || '').trim() === ing.name.trim()) ? '<div class="hint err">같은 이름 재료가 있어요. 레시피에서는 위의 것만 써요</div>' : ''}</td>
 <td><button type="button" class="btn-rebuy" data-a="rebuy" data-id="${ing.id}" aria-label="${esc(ing.name)} 재구매">재구매</button></td>
 <td><div class="seg" role="group" aria-label="액체 또는 무게"><button type="button" data-a="kind" data-id="${ing.id}" data-v="liquid" aria-pressed="${ing.kind === 'liquid'}">액체</button><button type="button" data-a="kind" data-id="${ing.id}" data-v="weight" aria-pressed="${ing.kind !== 'liquid'}">무게</button></div></td>
 <td>${IT('ing.buyText:' + ing.id, ing.buyText, ing.kind === 'liquid' ? '예: 1 L' : '예: 1 kg', '산 양')}${bi.err ? `<div class="hint err">${esc(bi.err)}</div>` : ''}</td>
@@ -889,8 +914,8 @@ ${ing.kind === 'liquid' ? '' : `<div class="fld"><label>1큰술 = 몇 g</label>$
 ${bi.base === '개' ? `<div class="fld"><label>1개 = 몇 g</label>${IN('ing.conv:' + ing.id + ':piece', conv.piece, '예: 40', '1개 무게')}</div>` : `<div class="fld"><label>1개 = 몇 ${bi.base}</label>${IN('ing.conv:' + ing.id + ':piece', conv.piece ?? (bi.cap || ''), '예: 8', '1개 무게')}</div>`}
 </div></td></tr>` : ''}`;
   }).join('');
-  const ingCards = S.ingredients.map(o => ({ type: 'ing', o })).sort((a, b) => lvOrder[stockStatus(a).lv] - lvOrder[stockStatus(b).lv]);
-  const supCards = S.supplies.map(o => ({ type: 'sup', o })).sort((a, b) => lvOrder[stockStatus(a).lv] - lvOrder[stockStatus(b).lv]);
+  const ingCards = S.ingredients.map(o => ({ type: 'ing', o }));
+  const supCards = S.supplies.map(o => ({ type: 'sup', o }));
   return `<div class="col" style="gap:6px"><h1 class="h1">산 재료와 가격을 적어요</h1><p class="lead">산 양과 낸 돈만 적으면, 1g (또는 1ml, 1개) 가격이 자동으로 나와요. 저장 버튼은 없어요. 적는 순간 저장돼요.</p></div>
 <div class="card">
 <div class="tw"><table class="t" style="min-width:1040px;table-layout:fixed">
@@ -969,12 +994,13 @@ function viewMenu() {
   const lines = m.recipe.map(l => {
     const c = lineCalc(l, t);
     if (l.fixed) return `<tr><td>${IT('line.label:' + m.id + ':' + l.id, l.label, '예: 소금·후추·파슬리 등', '고정 금액 이름')}</td><td><div class="unit">${IN('line.won:' + m.id + ':' + l.id, money(l.won), '100', '고정 금액')}<span>원 (한 번에 묶어서)</span></div></td><td class="r" style="font-weight:700">${W(c.cost)}</td><td><button type="button" class="btn-del" data-a="delLine" data-id="${m.id}" data-v="${l.id}">빼기</button></td></tr>`;
-    const ing = findIng(l.ingId), sp = splitLine(l), nm = ing ? ing.name : (l.name || '');
+    const ing = findIng(l.ingId) || ingByName(l.name), sp = splitLine(l), nm = ing ? ing.name : (l.name || '');
     let hint = '';
     if (c.unknown) hint = `<div class="hint err">재료 목록에 없는 이름이에요. <button type="button" class="linkbtn" style="color:var(--r);font-weight:700" data-a="addIngFromLine" data-id="${m.id}" data-v="${l.id}">+ "${esc(nm)}" 재료로 추가</button></div>`;
     else if (ing && !baseInfo(ing).qty) hint = `<div class="hint err">재료 화면에서 "${esc(ing.name)}"의 산 양과 낸 돈을 적으면 재료비가 계산돼요</div>`;
     else if (c.err) hint = `<div class="hint err">${esc(c.err)}</div>`;
     else if (ing && !effUnit(ing, t)) hint = `<div class="hint err">재료 화면에서 낸 돈을 적으면 재료비가 계산돼요</div>`;
+    else if (c.warn) hint = `<div class="hint" style="color:var(--ytx);font-weight:700">${esc(c.warn)}</div>`;
     else if (c.base != null) { const bu = baseUnit(ing); if (sp.unit !== bu) hint = `<div class="hint">= ${fmtS(c.base)} ${bu}${yieldF(ing) < 1 ? ` (손질 전 ${fmtS(c.gross)} ${bu})` : ''}</div>`; else if (yieldF(ing) < 1) hint = `<div class="hint">손질 전 ${fmtS(c.gross)} ${bu}</div>`; }
     const opts = UNITS.includes(sp.unit) ? UNITS : [...UNITS, sp.unit];
     return `<tr><td><input class="inp" list="ing-names" data-k="line.name:${m.id}:${l.id}" value="${esc(nm)}" placeholder="재료 이름 (예: 우삽겹)" aria-label="재료 이름"></td>
@@ -1067,9 +1093,9 @@ function viewToday() {
   const salesRows = S.menus.map(m => {
     const row = day?.sales?.[m.id] || {};
     let sum = 0; for (const ch of chs) sum += (num(row[ch.id]) || 0) * (priceOf(m, ch.id, D) || 0);
-    return `<tr><td><b>${esc(m.name || '(이름 없음)')}</b><div class="hint">${priceOf(m, 'store') != null ? W(priceOf(m, 'store')) : '가격 없음'}</div></td>${chs.map(ch => { const np = priceOf(m, ch.id, D) == null; if (np && !num(row[ch.id])) return `<td class="mut" style="font-size:14px;text-align:center">안 팔아요</td>`; return `<td>${IN(`sale:${m.id}:${ch.id}`, row[ch.id] ? row[ch.id] : '', '0', `${m.name} ${ch.short} 판매 수`, 'sm')}${np ? '<div class="hint err">가격 없음</div>' : ''}</td>`; }).join('')}<td class="r" style="font-weight:700">${W(sum)}</td></tr>`;
+    return `<tr><td><b>${esc(m.name || '(이름 없음)')}</b><div class="hint">${priceOf(m, 'store') != null ? W(priceOf(m, 'store')) : '가격 없음'}</div></td>${chs.map(ch => { const np = priceOf(m, ch.id, D) == null; if (np && !num(row[ch.id]) && document.activeElement?.dataset?.k !== `sale:${m.id}:${ch.id}`) return `<td class="mut" style="font-size:14px;text-align:center">안 팔아요</td>`; return `<td>${IN(`sale:${m.id}:${ch.id}`, row[ch.id] ? row[ch.id] : '', '0', `${m.name} ${ch.short} 판매 수`, 'sm')}${np ? '<div class="hint err">가격 없음</div>' : ''}</td>`; }).join('')}<td class="r" style="font-weight:700">${W(sum)}</td></tr>`;
   }).join('');
-  const items = stockItems().sort((a, b) => lvOrder[stockStatus(a).lv] - lvOrder[stockStatus(b).lv]);
+  const items = stockItems();
   const past = []; for (let i = 1; i <= 7; i++) past.push(addDays(D, -i));
   return `<div class="titlebar"><h1 class="h1">오늘 판 것과 쓴 돈을 적어요</h1>
 <div class="nav"><button type="button" class="navb" data-a="day" data-v="-1" aria-label="어제">‹</button><div class="navl">${dLabel(D)}</div><button type="button" class="navb" data-a="day" data-v="1" aria-label="내일">›</button>${D !== t ? `<button type="button" class="btn-line" data-a="dayToday">오늘로</button>` : ''}</div></div>
@@ -1204,10 +1230,10 @@ ${rank.map((x, i) => `<tr><td>${i + 1}</td><td><b>${esc(x.m.name)}</b></td><td c
 <div class="h2">매달 나가는 돈</div>
 <div class="mut" style="font-size:16px">한 번 적어두면 다음 달에도 같은 금액이 들어가요. 바뀌는 달만 고치면 돼요. ${M < monthOf(t) ? `지난달(${mLabel(M)})을 고치면 그달만 바뀌어요.` : `지금 보고 있는 ${mLabel(M)}부터 바뀌어요.`} 부가세·종합소득세처럼 몰아서 내는 돈은 "1년치"에 체크하고 1년 금액을 적으면 12로 나눠서 넣어요.</div>
 <div class="tw"><table class="t plain" style="min-width:640px"><tbody>
-${S.fixedCosts.map(f => { const raw = fixedRaw(f, M); return `<tr><td>${IT('fx.name:' + f.id, f.name, '예: 임대료', '항목 이름')}</td><td style="width:220px"><div class="unit">${IN('fx.amount:' + f.id, raw == null ? '' : money(raw), '예: 1,500,000', '금액')}<span>원</span></div></td><td style="width:280px"><label class="chk"><input type="checkbox" data-k="fx.annual:${f.id}" ${f.annual ? 'checked' : ''}>1년치${f.annual ? ` <span class="mut">→ 한 달 ${W(fixedAmount(f, M))}</span>` : ''}</label></td><td style="width:70px"><button type="button" class="btn-del" data-a="delFx" data-id="${f.id}">지우기</button></td></tr>`; }).join('')}
+${S.fixedCosts.map(f => { const raw = fixedRaw(f, M); return `<tr><td>${IT('fx.name:' + f.id, f.name, '예: 임대료', '항목 이름')}</td><td style="width:220px"><div class="unit">${IN('fx.amount:' + f.id, raw == null ? '' : money(raw), '예: 1,500,000', '금액')}<span>원</span></div></td><td style="width:280px"><label class="chk"><input type="checkbox" data-k="fx.annual:${f.id}" ${fxAnnual(f, M) ? 'checked' : ''}>1년치${fxAnnual(f, M) ? ` <span class="mut">→ 한 달 ${W(fixedAmount(f, M))}</span>` : ''}</label></td><td style="width:70px"><button type="button" class="btn-del" data-a="delFx" data-id="${f.id}">지우기</button></td></tr>`; }).join('')}
 </tbody></table></div>
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px"><button type="button" class="btn-line" data-a="addFx">+ 항목 추가</button><div style="font-size:18px">합계 <b style="font-size:24px">${W(r.fixed)}</b></div></div>
-<div style="background:var(--bg);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px"><b>쉬는 요일 <span class="mut" style="font-weight:400;font-size:15px">(${mLabel(M)}부터 바뀌어요. 지난달은 그대로예요)</span></b><div style="display:flex;flex-wrap:wrap;gap:4px 16px">${WD.map((w, i) => `<label class="chk"><input type="checkbox" data-k="set.closed:${i}" ${closedFor(M).includes(i) ? 'checked' : ''}>${w}요일</label>`).join('')}</div>
+<div style="background:var(--bg);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px"><b>쉬는 요일 <span class="mut" style="font-weight:400;font-size:15px">(${M < monthOf(t) ? `지난달(${mLabel(M)})을 고치면 그달만 바뀌어요` : `${mLabel(M)}부터 바뀌어요. 지난달은 그대로예요`})</span></b><div style="display:flex;flex-wrap:wrap;gap:4px 16px">${WD.map((w, i) => `<label class="chk"><input type="checkbox" data-k="set.closed:${i}" ${closedFor(M).includes(i) ? 'checked' : ''}>${w}요일</label>`).join('')}</div>
 <span class="mut" style="font-size:15px">${mLabel(M)} 영업일 ${bd}일 · 하루 몫 ${W(dailyShare(M))}. 특별히 쉰 날은 오늘 기록 화면에서 "쉬는 날"에 체크해요.</span></div>
 </div>
 <div class="card">
@@ -1220,23 +1246,32 @@ ${fileState === 'ok' ? `<div class="okbox"><b>장부가 이 파일에 자동으�
 <button type="button" class="btn-line" data-a="importJson">백업 불러오기</button>
 <button type="button" class="btn-line" data-a="exportCsv">${mLabel(M)} 엑셀(CSV)로 저장</button>
 </div>
-<div class="notes"><span>장부는 사장님 PC에만 저장되고 서버로 올라가지 않아요. 다른 브라우저나 시크릿 창에서 열면 빈 장부가 나와요.</span><span>처음이라 둘러보고 싶으면 <button type="button" class="linkbtn" data-a="demo">예시 장부 넣어 보기</button> (지금 장부를 바꿔요. "되돌리기"로 원래대로 돌릴 수 있어요)</span></div>
+<div class="notes"><span>앱 버전 ${APP_VERSION}. 새 버전을 올리면 다음에 열 때 자동으로 바뀌어요 (바로 받으려면 Ctrl+Shift+R).</span><span>장부는 사장님 PC에만 저장되고 서버로 올라가지 않아요. 다른 브라우저나 시크릿 창에서 열면 빈 장부가 나와요.</span><span>처음이라 둘러보고 싶으면 <button type="button" class="linkbtn" data-a="demo">예시 장부 넣어 보기</button> (지금 장부를 바꿔요. "되돌리기"로 원래대로 돌릴 수 있어요)</span></div>
 </div>`;
 }
 
 /* ============ 렌더 ============ */
 // 화면을 통째로 갈아끼우지 않고 바뀐 부분만 고친다. 입력 중인 칸은 그대로 두어 커서·한글 조합이 끊기지 않게 한다.
 let rendering = false;
+const sig = n => n.nodeType === 1 ? `${n.tagName}|${(n.getAttribute('class') || '').split(' ')[0]}|${n.getAttribute('data-k') || ''}|${n.id}` : '#' + n.nodeType;
 function morphChildren(from, to) {
-  const fc = [...from.childNodes], tc = [...to.childNodes];
+  const tc = [...to.childNodes];
+  let f = from.firstChild;
   for (let i = 0; i < tc.length; i++) {
-    const t = tc[i], f = fc[i];
+    const t = tc[i];
     if (!f) { from.appendChild(t); continue; }
-    if (f.nodeType !== t.nodeType || (f.nodeType === 1 && (f.tagName !== t.tagName || (f.getAttribute('data-k') || '') !== (t.getAttribute('data-k') || '')))) { from.replaceChild(t, f); continue; }
-    if (f.nodeType !== 1) { if (f.nodeValue !== t.nodeValue) f.nodeValue = t.nodeValue; continue; }
-    morphEl(f, t);
+    if (sig(f) !== sig(t)) {
+      let g = f.nextSibling; while (g && sig(g) !== sig(t)) g = g.nextSibling;
+      const fLater = tc.slice(i + 1, i + 8).some(x => sig(x) === sig(f));
+      if (g && !fLater) { while (f !== g) { const nx = f.nextSibling; f.remove(); f = nx; } }  // 사라진 노드 지우기
+      else if (fLater) { from.insertBefore(t, f); continue; }                                   // 새 노드 끼워 넣기
+      else { const nx = f.nextSibling; from.replaceChild(t, f); f = nx; continue; }
+    }
+    if (f.nodeType !== 1) { if (f.nodeValue !== t.nodeValue) f.nodeValue = t.nodeValue; }
+    else morphEl(f, t);
+    f = f.nextSibling;
   }
-  for (let i = tc.length; i < fc.length; i++) fc[i].remove();
+  while (f) { const nx = f.nextSibling; f.remove(); f = nx; }
 }
 function morphEl(from, to) {
   for (const a of [...from.attributes]) if (!to.hasAttribute(a.name) && !(a.name === 'open' && from.tagName === 'DETAILS')) from.removeAttribute(a.name);
@@ -1277,7 +1312,7 @@ const setWon = v => { const n = num(v); return n == null ? null : Math.round(n);
 function priceRecord(ing) {
   const p = lastPurchase(ing.id), t = today();
   if (p && p.date === t) return p;
-  const n = { id: uid(), itemId: ing.id, type: 'ing', date: t, ts: Date.now(), qty: p ? p.qty : (baseInfo(ing).qty || 0), paid: p ? p.paid : 0, leftover: null, rawUnit: p ? p.rawUnit : 0, addsToStock: false, anchored: false, priceEdit: true };
+  const n = { id: uid(), itemId: ing.id, type: 'ing', date: t, ts: Date.now(), qty: p ? p.qty : (baseInfo(ing).qty || 0), paid: p ? p.paid : 0, leftover: null, rawUnit: p ? p.rawUnit : 0, addsToStock: false, anchored: false, priceEdit: true, base: p ? { qty: p.qty, paid: p.paid, raw: p.rawUnit } : null };
   S.purchases.push(n); C = {};
   return n;
 }
@@ -1286,7 +1321,8 @@ function recomputeRaw(ing, p) {
   if (p.leftover != null) {
     const prev = purchasesOf(ing.id).filter(x => x !== p && (x.date < p.date || (x.date === p.date && x.ts < p.ts))).pop();
     p.rawUnit = (p.leftover * (prev ? prev.rawUnit || 0 : 0) + (p.paid || 0)) / (p.leftover + p.qty);
-  } else p.rawUnit = (p.paid || 0) / p.qty;
+  } else if (p.base && p.base.qty === p.qty && (p.base.paid || 0) === (p.paid || 0)) p.rawUnit = p.base.raw;  // 값이 그대로면 단가도 그대로
+  else p.rawUnit = (p.paid || 0) / p.qty;
 }
 function setPurchaseQty(item, p, q) {
   const delta = q - p.qty; p.qty = q;
@@ -1315,10 +1351,10 @@ const F = {
     const l = findMenu(mid).recipe.find(x => x.id === lid), sp = splitLine(l), had = findIng(l.ingId);
     const k = v.trim(), ing = k ? S.ingredients.find(i => (i.name || '').trim() === k) : null;
     l.name = v; l.ingId = ing ? ing.id : null; l.qty = sp.qty;
-    l.unit = ing && !had && !sp.qty ? defUnit(ing) : sp.unit;
+    l.unit = ing && !had && (!sp.qty || sp.unit === 'g') ? defUnit(ing) : sp.unit;
     l.text = l.qty ? `${l.qty} ${l.unit}` : '';
   }, 'ln' + lid),
-  'line.qty': (mid, lid, v) => commit(() => { const l = findMenu(mid).recipe.find(x => x.id === lid), sp = splitLine(l); l.qty = v.trim(); l.unit = sp.unit; l.text = l.qty ? `${l.qty} ${l.unit}` : ''; }, 'lq' + lid),
+  'line.qty': (mid, lid, v) => commit(() => { const l = findMenu(mid).recipe.find(x => x.id === lid), sp = splitLine(l); l.qty = qtyErr(v) ? v.trim() : normQty(v); l.unit = sp.unit; l.text = l.qty ? `${l.qty} ${l.unit}` : ''; }, 'lq' + lid),
   'line.unit': (mid, lid, v) => commit(() => { const l = findMenu(mid).recipe.find(x => x.id === lid), sp = splitLine(l); l.qty = sp.qty; l.unit = v; l.text = l.qty ? `${l.qty} ${l.unit}` : ''; }),
   'line.label': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).label = v; }, 'll' + lid),
   'line.won': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).won = setWon(v); }, 'lw' + lid),
@@ -1334,6 +1370,8 @@ const F = {
   'set.closed': (i, _, v, el) => commit(() => {
     const w = Number(i), M = ui.month, st = S.settings;
     if (!st.closedHist) st.closedHist = [{ from: '0000-00', days: [...(st.closedWeekdays || [])] }];
+    const N = addMonths(M, 1);
+    if (M < monthOf(today()) && !st.closedHist.some(x => x.from === N)) { st.closedHist.push({ from: N, days: [...closedFor(N)] }); st.closedHist.sort((x, y) => x.from.localeCompare(y.from)); }
     const a = new Set(closedFor(M)); el.checked ? a.add(w) : a.delete(w);
     const e = st.closedHist.find(x => x.from === M);
     if (e) e.days = [...a].sort(); else { st.closedHist.push({ from: M, days: [...a].sort() }); st.closedHist.sort((x, y) => x.from.localeCompare(y.from)); }
@@ -1353,9 +1391,8 @@ const F = {
   'tr.memo': (id, _, v) => commit(() => { dayOf(ui.date, true).transfers.find(x => x.id === id).memo = v; }, 'tm' + id),
   'used': (id, _, v) => { const it = findItem(id); commit(() => { const d = dayOf(ui.date, true); d.used = d.used || {}; if (!String(v).trim()) delete d.used[id]; else { const q = parseUseInput(it, v); if (q != null) d.used[id] = q; } }, 'us' + ui.date + id); },
   'fx.name': (id, _, v) => commit(() => { S.fixedCosts.find(f => f.id === id).name = v; }, 'fn' + id),
-  'fx.amount': (id, _, v) => commit(() => { const f = S.fixedCosts.find(x => x.id === id); const M = ui.month; const a = setWon(v) ?? 0; const N = addMonths(M, 1);
-    if (M < monthOf(today()) && !f.hist.some(x => x.from === N)) { const keep = fixedRaw(f, N); if (keep != null) { f.hist.push({ from: N, amount: keep }); f.hist.sort((x, y) => x.from.localeCompare(y.from)); } } const h = f.hist.find(x => x.from === M); if (h) h.amount = a; else { f.hist.push({ from: M, amount: a }); f.hist.sort((x, y) => x.from.localeCompare(y.from)); } }, 'fa' + id + ui.month),
-  'fx.annual': (id, _, v, el) => commit(() => { S.fixedCosts.find(f => f.id === id).annual = el.checked; }),
+  'fx.amount': (id, _, v) => commit(() => { const f = S.fixedCosts.find(x => x.id === id); fxEntryFor(f, ui.month).amount = setWon(v) ?? 0; }, 'fa' + id + ui.month),
+  'fx.annual': (id, _, v, el) => commit(() => { const f = S.fixedCosts.find(x => x.id === id); fxEntryFor(f, ui.month).annual = el.checked; }),
 };
 function handleField(el) {
   const k = el.dataset.k; if (!k) return;
@@ -1397,7 +1434,7 @@ const A = {
   selMenu: d => { ui.menuId = d.id; render(); },
   delMenu: d => { const m = findMenu(d.id); confirmDel(`"${m.name || '이름 없는 메뉴'}" 메뉴를 지울까요?`, '지난 판매 기록의 이 메뉴 숫자도 계산에서 빠져요.', () => commit(() => { S.menus = S.menus.filter(x => x.id !== d.id); }), '메뉴를 지웠어요'); },
   addLine: d => { commit(() => { findMenu(d.id).recipe.push({ id: uid(), ingId: null, name: '', qty: '', unit: 'g', text: '' }); }); const ins = app.querySelectorAll('[data-k^="line.name:"]'); ins[ins.length - 1]?.focus(); },
-  addIngFromLine: d => { const l = findMenu(d.id).recipe.find(x => x.id === d.v); const nm = (l.name || '').trim(); if (!nm) return; commit(() => { const ing = mkIng(S, { name: nm }, today(), Date.now()); l.ingId = ing.id; }); toast(`"${nm}"을(를) 재료에 추가했어요. 재료 화면에서 산 양과 낸 돈을 적어 주세요.`); },
+  addIngFromLine: d => { const l = findMenu(d.id).recipe.find(x => x.id === d.v); const nm = (l.name || '').trim(); if (!nm) return; const ex = ingByName(nm); commit(() => { const ing = ex || mkIng(S, { name: nm }, today(), Date.now()); l.ingId = ing.id; }); if (ex) return toast(`이미 있는 "${nm}" 재료에 연결했어요.`); toast(`"${nm}"을(를) 재료에 추가했어요. 재료 화면에서 산 양과 낸 돈을 적어 주세요.`); },
   addFixedLine: d => commit(() => { findMenu(d.id).recipe.push({ id: uid(), fixed: true, label: '소금·후추 등', won: 100 }); }),
   delLine: d => commit(() => { const m = findMenu(d.id); m.recipe = m.recipe.filter(l => l.id !== d.v); }),
   addCh: () => commit(() => { S.channels.push({ id: uid(), name: '전화 주문', short: '전화 주문', kind: 'custom', app: 0, pay: 0, fee: 0, vat: false, custom: true, edited: {} }); }),
@@ -1449,9 +1486,10 @@ ${isIng ? '' : `<label class="chk" style="font-weight:500"><input type="checkbox
   const qEl = dlg.querySelector('#rb-qty'), pEl = dlg.querySelector('#rb-paid'), lEl = dlg.querySelector('#rb-left'), pv = dlg.querySelector('#rb-pv');
   const calc = () => {
     let q, err = null;
-    const ingQ = txt => { const p = parseAmt(txt); if (!p) return { err: '산 양을 적어 주세요' }; if (PACKW.includes(p.unit) || p.unit === pi.name.toLowerCase()) return { v: p.n * pi.size, pack: true }; const b = toBase(o, p.n, p.unit || baseUnit(o)); return b.err ? { err: b.err } : { v: b.v }; };
+    const buyU = (parseAmt(o.buyText)?.unit) || '';
+    const ingQ = (txt, useBuyUnit) => { const p = parseAmt(txt); if (!p) return { err: '산 양을 적어 주세요' }; if (PACKW.includes(p.unit) || p.unit === pi.name.toLowerCase()) return { v: p.n * pi.size, pack: true }; const u = p.unit || (useBuyUnit && buyU && !PACKW.includes(buyU) && !PIECE.includes(buyU) ? buyU : baseUnit(o)); const b = toBase(o, p.n, u); return b.err ? { err: b.err } : { v: b.v, pack: !p.unit }; };
     let pack = false;
-    if (isIng) { const r = ingQ(qEl.value); if (r.err) err = r.err; else { q = r.v; pack = r.pack; } }
+    if (isIng) { const r = ingQ(qEl.value, true); if (r.err) err = r.err; else { q = r.v; pack = r.pack; } }
     else { q = parseStockInput(it, qEl.value); if (q == null) err = '산 양을 적어 주세요'; }
     const paid = num(pEl.value) || 0;
     const left = lEl.value.trim() ? (isIng ? (ingQ(lEl.value).v ?? null) : parseStockInput(it, lEl.value)) : null;
@@ -1477,11 +1515,11 @@ ${isIng ? '' : `<label class="chk" style="font-weight:500"><input type="checkbox
     dlg.close();
     commit(() => {
       const ts = Date.now(), t = today();
-      const p = { id: uid(), itemId: id, type: it.type, date: t, ts, qty: c.q, paid: Math.round(c.paid), leftover: c.left, addsToStock: !c.measured, anchored: c.measured };
+      const p = { id: uid(), itemId: id, type: it.type, date: t, ts, qty: c.q, paid: Math.round(c.paid), leftover: c.left, addsToStock: false, anchored: true };
       if (isIng) { p.rawUnit = c.raw; o.buyText = c.pack ? fmtBase(c.q, baseUnit(o)) : qEl.value.trim(); }
       else if (c.paid && c.q) o.price = Math.round(c.paid / (c.q / pi.size));
       S.purchases.push(p);
-      if (c.measured) setAnchor(o, { date: t, ts, qty: c.left + c.q, usageAtAnchor: usage(it, t) });
+      setAnchor(o, { date: t, ts, qty: (c.measured ? c.left : st) + c.q, usageAtAnchor: usage(it, t) });
       o.anchorAuto = false;
       if (addExp && c.paid) dayOf(t, true).expenses.push({ id: uid(), name: o.name || '포장재', amount: Math.round(c.paid), memo: '재구매' });
     });
@@ -1620,7 +1658,7 @@ async function checkRates() {
 let deferredInstall = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; if (S) render(); });
 addEventListener('appinstalled', () => { deferredInstall = null; if (S) { S.settings.dismissed = Object.assign({}, S.settings.dismissed, { install: true }); scheduleSave(); render(); } });
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) { addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) { addEventListener('load', () => { navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {}); }); }
 
 /* ============ 시작 ============ */
 async function boot() {
