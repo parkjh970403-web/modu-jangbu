@@ -546,11 +546,22 @@ const yieldF = ing => Math.max(1, num(ing.yield) || 100) / 100;
 const effUnit = (ing, date) => rawUnitAt(ing, date) / yieldF(ing);
 function lineCalc(line, date) {
   if (line.fixed) return { cost: num(line.won) || 0 };
-  const ing = findIng(line.ingId); if (!ing) return { cost: 0, err: '재료를 골라 주세요' };
+  const ing = findIng(line.ingId); if (!ing) return (line.name || '').trim() ? { cost: 0, err: '재료 목록에 없는 이름이에요', unknown: true } : { cost: 0, empty: true };
   const p = parseAmt(line.text); if (!p) return { cost: 0, empty: true };
   if (p.unit === '원') return { cost: p.n, fixedWon: true };
   const b = toBase(ing, p.n, p.unit); if (b.err) return { cost: 0, err: b.err };
   return { cost: b.v * effUnit(ing, date), base: b.v, gross: b.v / yieldF(ing), ing };
+}
+// 레시피 한 줄의 "쓰는 양"을 숫자와 단위로 나눠 보여준다
+const UNITS = ['g', 'kg', 'ml', 'L', '개', '큰술', '작은술', '온스', '줌'];
+const UNIT_ALIAS = { l: 'L', 리터: 'L', oz: '온스', 온즈: '온스', floz: '온스', 한줌: '줌', 움큼: '줌', tbsp: '큰술', 큰스푼: '큰술', 숟가락: '큰술', 밥숟가락: '큰술', tsp: '작은술', 작은스푼: '작은술', 티스푼: '작은술', 그램: 'g', 킬로: 'kg', 키로: 'kg', cc: 'ml', 미리: 'ml', 알: '개', 장: '개', 쪽: '개', 마리: '개', 조각: '개' };
+const defUnit = ing => ing ? baseUnit(ing) : 'g';
+function splitLine(l) {
+  if (l.unit != null) return { qty: l.qty ?? '', unit: l.unit };
+  const p = parseAmt(l.text), ing = findIng(l.ingId);
+  if (!p) return { qty: '', unit: defUnit(ing) };
+  const m = String(l.text).trim().match(/^(\d+\/\d+|\d[\d,]*(?:\.\d+)?(?:\s+\d+\/\d+)?)/);
+  return { qty: m ? m[1] : (p.hasN ? String(p.n) : '1'), unit: UNIT_ALIAS[p.unit] || p.unit || defUnit(ing) };
 }
 const menuCost = (m, date) => memo('mc' + m.id + date, () => m.recipe.reduce((a, l) => a + lineCalc(l, date).cost, 0));
 // 날짜를 주면 그날 적용되던 가격을 쓴다 (가격을 바꿔도 지난 기록은 그대로)
@@ -958,12 +969,16 @@ function viewMenu() {
   const lines = m.recipe.map(l => {
     const c = lineCalc(l, t);
     if (l.fixed) return `<tr><td>${IT('line.label:' + m.id + ':' + l.id, l.label, '예: 소금·후추·파슬리 등', '고정 금액 이름')}</td><td><div class="unit">${IN('line.won:' + m.id + ':' + l.id, money(l.won), '100', '고정 금액')}<span>원 (한 번에 묶어서)</span></div></td><td class="r" style="font-weight:700">${W(c.cost)}</td><td><button type="button" class="btn-del" data-a="delLine" data-id="${m.id}" data-v="${l.id}">빼기</button></td></tr>`;
-    const ing = findIng(l.ingId);
+    const ing = findIng(l.ingId), sp = splitLine(l), nm = ing ? ing.name : (l.name || '');
     let hint = '';
-    if (c.err) hint = `<div class="hint err">${esc(c.err)}</div>`;
-    else if (c.base != null) { const p = parseAmt(l.text); const bu = baseUnit(ing); if (p && p.unit && !(p.unit in MASS && bu === 'g' && p.unit === 'g') && p.unit !== bu) hint = `<div class="hint">= ${fmtS(c.base)} ${bu}${yieldF(ing) < 1 ? ` (손질 전 ${fmtS(c.gross)} ${bu})` : ''}</div>`; else if (yieldF(ing) < 1) hint = `<div class="hint">손질 전 ${fmtS(c.gross)} ${bu}</div>`; }
-    return `<tr><td><select class="inp" data-k="line.ing:${m.id}:${l.id}" aria-label="재료 고르기">${ing ? '' : '<option value="">재료 고르기</option>'}${S.ingredients.map(i => `<option value="${i.id}" ${i.id === l.ingId ? 'selected' : ''}>${esc(i.name || '(이름 없음)')}</option>`).join('')}</select></td>
-<td>${IT('line.text:' + m.id + ':' + l.id, l.text, '예: 80 g, 1 큰술, 5 온스, 2 개', (ing?.name || '재료') + ' 쓰는 양')}${hint}</td><td class="r" style="font-weight:700">${W(c.cost)}</td><td><button type="button" class="btn-del" data-a="delLine" data-id="${m.id}" data-v="${l.id}">빼기</button></td></tr>`;
+    if (c.unknown) hint = `<div class="hint err">재료 목록에 없는 이름이에요. <button type="button" class="linkbtn" style="color:var(--r);font-weight:700" data-a="addIngFromLine" data-id="${m.id}" data-v="${l.id}">+ "${esc(nm)}" 재료로 추가</button></div>`;
+    else if (ing && !baseInfo(ing).qty) hint = `<div class="hint err">재료 화면에서 "${esc(ing.name)}"의 산 양과 낸 돈을 적으면 재료비가 계산돼요</div>`;
+    else if (c.err) hint = `<div class="hint err">${esc(c.err)}</div>`;
+    else if (ing && !effUnit(ing, t)) hint = `<div class="hint err">재료 화면에서 낸 돈을 적으면 재료비가 계산돼요</div>`;
+    else if (c.base != null) { const bu = baseUnit(ing); if (sp.unit !== bu) hint = `<div class="hint">= ${fmtS(c.base)} ${bu}${yieldF(ing) < 1 ? ` (손질 전 ${fmtS(c.gross)} ${bu})` : ''}</div>`; else if (yieldF(ing) < 1) hint = `<div class="hint">손질 전 ${fmtS(c.gross)} ${bu}</div>`; }
+    const opts = UNITS.includes(sp.unit) ? UNITS : [...UNITS, sp.unit];
+    return `<tr><td><input class="inp" list="ing-names" data-k="line.name:${m.id}:${l.id}" value="${esc(nm)}" placeholder="재료 이름 (예: 우삽겹)" aria-label="재료 이름"></td>
+<td><div style="display:flex;gap:6px">${IN('line.qty:' + m.id + ':' + l.id, sp.qty, '예: 80', nm + ' 쓰는 양', '')}<select class="inp" style="width:110px;flex:0 0 auto" data-k="line.unit:${m.id}:${l.id}" aria-label="${esc(nm)} 단위">${opts.map(u => `<option value="${esc(u)}" ${u === sp.unit ? 'selected' : ''}>${esc(u === '줌' ? '한 줌' : u)}</option>`).join('')}</select></div>${hint}</td><td class="r" style="font-weight:700">${W(c.cost)}</td><td><button type="button" class="btn-del" data-a="delLine" data-id="${m.id}" data-v="${l.id}">빼기</button></td></tr>`;
   }).join('');
   // 경고 문장
   const warns = [];
@@ -985,11 +1000,11 @@ ${S.menus.map(x => { const p = priceOf(x, 'store'); const r = p ? menuCost(x, t)
 <button type="button" class="btn-add" data-a="addMenu" style="margin-top:6px">+ 메뉴 추가</button></aside>
 <div class="card" style="flex:1 1 640px">
 <div class="titlebar"><div style="flex:1 1 300px"><label class="mut" style="font-size:14px" for="mname">메뉴 이름</label>${`<input id="mname" class="inp" style="font-size:22px;font-weight:700" data-k="menu.name:${m.id}" value="${esc(m.name)}" placeholder="예: 우삽겹 파스타">`}</div><button type="button" class="btn-del" data-a="delMenu" data-id="${m.id}">이 메뉴 지우기</button></div>
-<div class="tw"><table class="t" style="min-width:600px"><thead><tr><th style="width:32%">재료</th><th>쓰는 양</th><th class="r" style="width:110px">재료비</th><th style="width:60px"><span class="sr">빼기</span></th></tr></thead>
-<tbody>${lines || '<tr><td colspan="4" class="mut" style="padding:14px 8px">아래 "+ 재료 넣기"를 눌러 레시피를 만들어요.</td></tr>'}</tbody>
+<div class="tw"><table class="t" style="min-width:600px"><thead><tr><th style="width:32%">재료 <span style="font-weight:400">(직접 적어요)</span></th><th>쓰는 양 <span style="font-weight:400">(숫자 + 단위)</span></th><th class="r" style="width:110px">재료비</th><th style="width:60px"><span class="sr">빼기</span></th></tr></thead>
+<tbody>${lines || '<tr><td colspan="4" class="mut" style="padding:14px 8px">아래 "+ 재료 넣기"를 눌러 레시피를 만들어요.</td></tr>'}</tbody><datalist id="ing-names">${S.ingredients.filter(i => i.name).map(i => `<option value="${esc(i.name)}"></option>`).join('')}</datalist>
 <tfoot><tr><td colspan="2">합계 재료비</td><td class="r" style="font-size:20px">${W(cost)}</td><td></td></tr></tfoot></table></div>
-<div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn-line" data-a="addLine" data-id="${m.id}" ${S.ingredients.length ? '' : 'disabled'}>+ 재료 넣기</button><button type="button" class="btn-line" data-a="addFixedLine" data-id="${m.id}">+ 고정 금액 넣기 (소금·후추처럼)</button></div>
-${S.ingredients.length ? '' : '<div class="hint">먼저 "1 재료" 화면에서 재료를 추가해요.</div>'}
+<div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn-line" data-a="addLine" data-id="${m.id}">+ 재료 넣기</button><button type="button" class="btn-line" data-a="addFixedLine" data-id="${m.id}">+ 고정 금액 넣기 (소금·후추처럼)</button></div>
+<div class="hint">재료 이름을 적으면 재료 화면에 있는 재료 중에서 골라 쓸 수 있어요. 처음 쓰는 재료는 "재료로 추가"를 누르고, 재료 화면에서 산 양과 낸 돈을 적어요. 1큰술·1개가 몇 g인지는 재료 화면 "단위"에서 정해요.</div>
 ${badLines ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>재료비를 계산 못 한 재료가 ${badLines}개 있어요. 그 재료는 0원으로 들어가서 재료비가 실제보다 적게 나와요. 빨간 안내를 보고 고쳐 주세요.</span></div>` : ''}
 ${warns.length ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>${warns.map(esc).join(' ')}</span></div>` : ''}
 <div style="background:var(--bg);border-radius:12px;padding:14px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
@@ -1296,8 +1311,15 @@ const F = {
   'sup.count': (id, _, v) => commit(() => { findSup(id).rule.count = setNum(v); }, 'sc' + id),
   'menu.name': (id, _, v) => commit(() => { findMenu(id).name = v; }, 'mn' + id),
   'menu.price': (id, ch, v) => commit(() => { setMenuPrice(findMenu(id), ch, setWon(v)); }, 'mp' + id + ch),
-  'line.ing': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).ingId = v; }),
-  'line.text': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).text = v; }, 'lt' + lid),
+  'line.name': (mid, lid, v) => commit(() => {
+    const l = findMenu(mid).recipe.find(x => x.id === lid), sp = splitLine(l), had = findIng(l.ingId);
+    const k = v.trim(), ing = k ? S.ingredients.find(i => (i.name || '').trim() === k) : null;
+    l.name = v; l.ingId = ing ? ing.id : null; l.qty = sp.qty;
+    l.unit = ing && !had && !sp.qty ? defUnit(ing) : sp.unit;
+    l.text = l.qty ? `${l.qty} ${l.unit}` : '';
+  }, 'ln' + lid),
+  'line.qty': (mid, lid, v) => commit(() => { const l = findMenu(mid).recipe.find(x => x.id === lid), sp = splitLine(l); l.qty = v.trim(); l.unit = sp.unit; l.text = l.qty ? `${l.qty} ${l.unit}` : ''; }, 'lq' + lid),
+  'line.unit': (mid, lid, v) => commit(() => { const l = findMenu(mid).recipe.find(x => x.id === lid), sp = splitLine(l); l.qty = sp.qty; l.unit = v; l.text = l.qty ? `${l.qty} ${l.unit}` : ''; }),
   'line.label': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).label = v; }, 'll' + lid),
   'line.won': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).won = setWon(v); }, 'lw' + lid),
   'ch.name': (id, _, v) => commit(() => { const c = findCh(id); c.name = v; c.short = v; }, 'cn' + id),
@@ -1362,7 +1384,7 @@ const A = {
   gotoStock: () => { closePops(); ui.tab = 'ing'; render(); document.getElementById('stock')?.scrollIntoView({ behavior: 'smooth' }); },
   gotoFees: () => { ui.tab = 'menu'; render(); document.getElementById('fees')?.scrollIntoView({ behavior: 'smooth' }); },
   addIng: () => { commit(() => { mkIng(S, { name: '' }, today(), Date.now()); }); const ins = app.querySelectorAll('[data-k^="ing.name:"]'); ins[ins.length - 1]?.focus(); },
-  delIng: d => { const ing = findIng(d.id); const used = S.menus.filter(m => m.recipe.some(l => l.ingId === d.id)).map(m => m.name); confirmDel(`"${ing.name || '이름 없는 재료'}"를 지울까요?`, used.length ? `이 재료가 들어간 메뉴(${used.join(', ')})의 레시피에서도 빠져요.` : '재고 카드와 구매 기록도 같이 지워져요.', () => commit(() => { S.ingredients = S.ingredients.filter(x => x.id !== d.id); S.purchases = S.purchases.filter(p => p.itemId !== d.id); for (const m of S.menus) m.recipe = m.recipe.filter(l => l.ingId !== d.id); }), '재료를 지웠어요'); },
+  delIng: d => { const ing = findIng(d.id); const used = S.menus.filter(m => m.recipe.some(l => l.ingId === d.id)).map(m => m.name); confirmDel(`"${ing.name || '이름 없는 재료'}"를 지울까요?`, used.length ? `이 재료가 들어간 메뉴(${used.join(', ')})의 레시피에는 이름만 남고 재료비는 0원이 돼요. 재고 카드와 구매 기록도 같이 지워져요.` : '재고 카드와 구매 기록도 같이 지워져요.', () => commit(() => { S.ingredients = S.ingredients.filter(x => x.id !== d.id); S.purchases = S.purchases.filter(p => p.itemId !== d.id); for (const m of S.menus) for (const l of m.recipe) if (l.ingId === d.id) { const sp = splitLine(l); Object.assign(l, sp); l.name = ing.name; l.ingId = null; } }), '재료를 지웠어요'); },
   kind: d => commit(() => { const ing = findIng(d.id); ing.kind = d.v; const q = baseInfo(ing).qty || 0; const lp = lastPurchase(d.id); if (lp && lp.qty === q) return; const p = priceRecord(ing); setPurchaseQty({ type: 'ing', o: ing }, p, q); recomputeRaw(ing, p); }),
   units: d => { ui.openUnits[d.id] = !ui.openUnits[d.id]; render(); },
   rebuy: d => { closePops(); openRebuy(d.id); },
@@ -1374,7 +1396,8 @@ const A = {
   addMenu: () => { let id; commit(() => { id = uid(); S.menus.push({ id, name: '', prices: { store: null }, recipe: [] }); }); ui.menuId = id; ui.tab = 'menu'; render(); document.getElementById('mname')?.focus(); },
   selMenu: d => { ui.menuId = d.id; render(); },
   delMenu: d => { const m = findMenu(d.id); confirmDel(`"${m.name || '이름 없는 메뉴'}" 메뉴를 지울까요?`, '지난 판매 기록의 이 메뉴 숫자도 계산에서 빠져요.', () => commit(() => { S.menus = S.menus.filter(x => x.id !== d.id); }), '메뉴를 지웠어요'); },
-  addLine: d => { commit(() => { findMenu(d.id).recipe.push({ id: uid(), ingId: S.ingredients[0]?.id || '', text: '' }); }); const ins = app.querySelectorAll('[data-k^="line.text:"]'); ins[ins.length - 1]?.focus(); },
+  addLine: d => { commit(() => { findMenu(d.id).recipe.push({ id: uid(), ingId: null, name: '', qty: '', unit: 'g', text: '' }); }); const ins = app.querySelectorAll('[data-k^="line.name:"]'); ins[ins.length - 1]?.focus(); },
+  addIngFromLine: d => { const l = findMenu(d.id).recipe.find(x => x.id === d.v); const nm = (l.name || '').trim(); if (!nm) return; commit(() => { const ing = mkIng(S, { name: nm }, today(), Date.now()); l.ingId = ing.id; }); toast(`"${nm}"을(를) 재료에 추가했어요. 재료 화면에서 산 양과 낸 돈을 적어 주세요.`); },
   addFixedLine: d => commit(() => { findMenu(d.id).recipe.push({ id: uid(), fixed: true, label: '소금·후추 등', won: 100 }); }),
   delLine: d => commit(() => { const m = findMenu(d.id); m.recipe = m.recipe.filter(l => l.id !== d.v); }),
   addCh: () => commit(() => { S.channels.push({ id: uid(), name: '전화 주문', short: '전화 주문', kind: 'custom', app: 0, pay: 0, fee: 0, vat: false, custom: true, edited: {} }); }),
