@@ -1,0 +1,11 @@
+{
+  "version": "2026-10",
+  "updated": "2026-10-01",
+  "note": "만드는 사람이 매달 한 번 조사해서 고쳐 올리는 배달앱 기본 수수료. app·pay는 %, fee는 주문 1건 배달비(원, 부가세 별도).",
+  "channels": {
+    "baemin": { "app": 6.8, "pay": 3, "fee": 3000 },
+    "coupang": { "app": 6.8, "pay": 3, "fee": 3000 },
+    "yogiyo": { "app": 9.7, "pay": 3, "fee": 3000 },
+    "naver": { "app": 0, "pay": 3, "fee": 0 }
+  }
+}

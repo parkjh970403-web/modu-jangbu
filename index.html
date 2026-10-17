@@ -1,0 +1,1510 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>모두의장부</title>
+<meta name="description" content="타코집 원가·가계부. 메뉴별 재료비와 남는 돈, 하루·한 달 장부를 브라우저 하나로.">
+<meta name="theme-color" content="#17231C">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F1F4F0;--card:#fff;--ink:#17231C;--ink2:#31453A;--mut:#5B6B62;--line:#D5DDD6;--line2:#E3E9E4;--ib:#B9C5BC;--chip:#E8EEE9;
+  --g:#137A4B;--gbg:#E3F1E8;--gbar:#C5DECE;--r:#C0392B;--rbg:#FBE9E5;--rtx:#8A2E20;--y:#E0A100;--ybg:#FFF1D6;--ytx:#8A5A00;
+  --o:#D9480F;--otx:#B93A0A;--gray:#5F6B66;--graybg:#E9ECEA;--note:#8A4B00;
+}
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Noto Sans KR',system-ui,-apple-system,'Malgun Gothic',sans-serif;font-size:17px;line-height:1.45}
+button,input,select{font-family:inherit;color:inherit;font-size:inherit}
+button{white-space:nowrap;cursor:pointer}
+a{color:var(--ink2)}
+.wrap{max-width:1120px;margin:0 auto;padding:24px 24px 72px;display:flex;flex-direction:column;gap:20px}
+.row{display:flex;flex-wrap:wrap;gap:16px}
+.col{display:flex;flex-direction:column;gap:2px}
+.mut{color:var(--mut)}
+.pos{color:var(--g)}.neg{color:var(--r)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+.logo{font-size:28px;font-weight:900}
+.status{display:flex;align-items:center;gap:8px;font-size:15px;color:var(--mut)}
+.status .dot{width:9px;height:9px;border-radius:50%;background:var(--g)}
+.status.bad{color:var(--r);font-weight:700}.status.bad .dot{background:var(--r)}
+.status.wait .dot{background:var(--ib)}
+.topbox{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:14px 22px}
+.tb-lbl{font-size:14px;color:var(--mut);white-space:nowrap}
+.tb-big{font-size:30px;font-weight:900;line-height:1.1;white-space:nowrap}
+.vsep{width:1px;height:48px;background:var(--line)}
+.pills{display:flex;flex-wrap:wrap;gap:8px}
+details.sp{position:relative}
+.pill{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;white-space:nowrap;font-size:15px;font-weight:700}
+.pill::-webkit-details-marker{display:none}
+.pill .dot{width:10px;height:10px;border-radius:50%}
+.pill-red{background:var(--rbg);color:var(--r)}.pill-red .dot{background:var(--r)}
+.pill-yellow{background:var(--ybg);color:var(--ytx)}.pill-yellow .dot{background:var(--y)}
+.pill-zero{background:var(--graybg);color:var(--gray)}.pill-zero .dot{background:var(--gray)}
+.caret{font-size:12px}
+.pop{position:absolute;top:calc(100% + 10px);left:0;width:360px;max-width:86vw;z-index:60;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px 12px;box-shadow:0 10px 28px rgba(23,35,28,.18);display:flex;flex-direction:column;gap:2px}
+.pop-right{left:auto;right:0}
+.pop-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:8px}
+.pop-t{font-size:15px;font-weight:900}
+.pop-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line2)}
+.pop-row b{font-size:16px}.pop-row .sub{font-size:13px;color:var(--mut)}
+.pop-row .rr{display:flex;align-items:center;gap:10px}
+.pop-row .days{font-size:14px;font-weight:700}
+.pop-empty{padding:10px 0;border-top:1px solid var(--line2);color:var(--mut);font-size:15px}
+.pop-f{display:flex;gap:8px;margin-top:8px}
+.pop-f .btn-soft{flex:1}
+
+/* tabs */
+.tabs{display:flex;flex-wrap:wrap;gap:12px}
+.tab{flex:1 1 220px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:14px 20px;border-radius:14px;background:#fff;color:var(--ink);border:1px solid var(--line);text-align:left}
+.tab b{font-size:20px}.tab span{font-size:14px;color:var(--mut)}
+.tab[aria-current="page"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.tab[aria-current="page"] span{color:#C9D6CD}
+
+/* banners */
+.banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;border-radius:14px;padding:14px 18px;font-size:16px}
+.banner b{font-size:18px}
+.banner-red{background:var(--rbg);color:var(--rtx);border:2px solid var(--r)}
+.banner-red b{color:var(--r)}
+.banner-yellow{background:var(--ybg);color:var(--note)}
+.banner-green{background:var(--gbg);color:var(--ink2)}
+.banner .acts{display:flex;gap:8px;flex-wrap:wrap}
+
+/* type */
+.h1{margin:0;font-size:34px;font-weight:900}
+.lead{margin:0;font-size:18px;color:var(--mut)}
+.h2{font-size:22px;font-weight:700}
+.h3{font-size:18px;font-weight:700}
+.titlebar{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+
+/* cards */
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.stat{flex:1 1 220px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px 24px;display:flex;flex-direction:column;gap:6px}
+.stat .l{font-size:15px;color:var(--mut)}
+.stat .v{font-size:34px;font-weight:900;line-height:1.15}
+.stat .s{font-size:14px;color:var(--mut)}
+.stat.good{background:var(--gbg);border-color:var(--gbg)}.stat.good .l,.stat.good .s{color:var(--ink2)}.stat.good .v{color:var(--g)}
+.stat.bad{background:var(--rbg);border-color:var(--rbg)}.stat.bad .l,.stat.bad .s{color:var(--rtx)}.stat.bad .v{color:var(--r)}
+
+/* inputs & buttons */
+.inp{width:100%;border:1.5px solid var(--ib);border-radius:10px;padding:11px 13px;font-size:17px;background:#fff;min-height:46px}
+.inp:focus{outline:3px solid #9CC9AE;outline-offset:0;border-color:var(--g)}
+.inp::placeholder{color:#8C9A91}
+.inp.sm{padding:8px 10px;min-height:42px}
+.inp.num{text-align:right}
+.inp.big{font-size:30px;font-weight:900;padding:6px 14px;width:170px}
+select.inp{padding-right:8px}
+.unit{display:flex;align-items:center;gap:6px}
+.unit > span{color:var(--mut);font-size:15px;white-space:nowrap}
+.btn{border:0;border-radius:12px;padding:12px 18px;font-size:16px;font-weight:700;min-height:46px}
+.btn-dark{background:var(--ink);color:#fff;border:0;border-radius:10px;padding:10px 18px;font-weight:700;font-size:15px;min-height:44px}
+.btn-soft{background:var(--bg);color:var(--ink);border:0;border-radius:10px;padding:10px 14px;font-weight:700;font-size:15px;min-height:44px}
+.btn-add{background:var(--o);color:#fff;border:0;border-radius:12px;padding:12px 20px;font-size:17px;font-weight:700;min-height:48px}
+.btn-line{background:#fff;border:1.5px solid var(--ib);border-radius:10px;padding:9px 14px;font-weight:700;font-size:15px;min-height:44px}
+.btn-sm{background:#fff;border:1.5px solid var(--ib);border-radius:10px;padding:5px 12px;font-weight:700;font-size:14px}
+.btn-rebuy{background:#fff;border:1.5px solid var(--o);color:var(--otx);border-radius:10px;padding:8px 12px;font-weight:700;font-size:15px;min-height:42px}
+.btn-del{background:none;border:0;color:var(--mut);text-decoration:underline;font-size:15px;padding:8px 6px;min-height:42px}
+.btn-del:hover{color:var(--r)}
+.btn-red{background:var(--r);color:#fff;border:0;border-radius:10px;padding:10px 18px;font-weight:700;font-size:16px;min-height:46px}
+.seg{display:flex;gap:4px}
+.seg button{border:0;padding:8px 10px;border-radius:8px;font-size:15px;font-weight:500;background:var(--chip);color:var(--ink2);min-height:40px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:#fff;font-weight:700}
+.nav{display:flex;align-items:center;gap:10px}
+.navb{display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:12px;background:#fff;border:1px solid var(--line);font-size:22px;font-weight:700}
+.navl{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 22px;font-size:20px;font-weight:700}
+.chk{display:inline-flex;align-items:center;gap:8px;font-size:16px;cursor:pointer;min-height:44px}
+.chk input{width:20px;height:20px;accent-color:var(--ink)}
+
+/* tables */
+.tw{overflow-x:auto;position:relative}
+table.t{width:100%;border-collapse:collapse}
+table.t th{text-align:left;font-size:14px;font-weight:500;color:var(--mut);padding:0 8px 10px;white-space:nowrap}
+table.t td{padding:6px 8px;vertical-align:middle}
+table.t tbody tr+tr td{border-top:1px solid var(--line2)}
+table.t.plain tbody tr+tr td{border-top:0}
+table.t td.r,table.t th.r{text-align:right}
+table.t tfoot td{border-top:2px solid var(--line);padding-top:12px;font-weight:700}
+.hint{font-size:13px;color:var(--mut);margin-top:3px}
+.hint.err{color:var(--r);font-weight:700}
+.cell-bad{background:var(--rbg)}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--chip);color:var(--ink2)}
+.tag-red{background:var(--rbg);color:var(--r)}
+
+/* status chips */
+.st{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:15px;font-weight:700;white-space:nowrap}
+.st .dot{width:9px;height:9px;border-radius:50%}
+.st-red{background:var(--rbg);color:var(--r)}.st-red .dot{background:var(--r)}
+.st-yellow{background:var(--ybg);color:var(--ytx)}.st-yellow .dot{background:var(--ytx)}
+.st-green{background:var(--gbg);color:var(--g)}.st-green .dot{background:var(--g)}
+.st-gray{background:var(--graybg);color:var(--gray)}.st-gray .dot{background:var(--gray)}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;font-size:15px;color:var(--mut)}
+
+/* stock cards */
+.scards{display:flex;flex-direction:column;gap:12px}
+.scard{border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.scard.lv-red{border:2px solid var(--r)}
+.scard.lv-yellow{border:2px solid var(--y)}
+.sc-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.sc-name{font-size:19px;font-weight:700}
+.sc-days{font-size:16px;font-weight:700}
+.sc-sp{flex:1}
+.sc-fields{display:flex;flex-wrap:wrap;gap:12px}
+.fld{flex:0 0 150px;display:flex;flex-direction:column;gap:4px}
+.fld.wide{flex:1 1 320px}
+.fld label,.fld .lb{font-size:13px;color:var(--mut)}
+.fld .hint{min-height:18px}
+.mine{color:var(--o);font-weight:700}
+
+/* guide boxes */
+.guide{background:var(--rbg);border:2px solid var(--r);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.guide .gt{font-size:20px;font-weight:900;color:var(--r)}
+.step{display:flex;gap:10px;align-items:flex-start}
+.step .n{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--r);color:#fff;font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:center}
+.step .tx{font-size:17px;font-weight:700;color:var(--r);line-height:1.5}
+.ex{background:#fff;border-radius:10px;padding:12px 16px;font-size:16px;line-height:1.6}
+.help{flex:1 1 320px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px 22px;display:flex;flex-direction:column;gap:8px}
+.help .ht{font-size:18px;font-weight:700}
+.help .hb{font-size:16px;color:var(--ink2);line-height:1.6}
+.notes{display:flex;flex-direction:column;gap:6px;font-size:15px;color:var(--mut);line-height:1.55}
+.notes span::before{content:"· "}
+.warnbox{display:flex;gap:10px;align-items:flex-start;background:var(--rbg);border-radius:12px;padding:12px 14px;color:var(--rtx);font-size:15px;font-weight:500}
+.warnbox .ic{flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:var(--r);color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:14px}
+.okbox{background:var(--gbg);border-radius:12px;padding:12px 14px;color:var(--ink2);font-size:15px}
+
+/* menu screen */
+.menu-list{flex:0 0 240px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px;align-self:flex-start}
+.menu-list .ml{padding:14px 16px;border-radius:12px;background:var(--bg);border:0;font-size:18px;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px;white-space:normal}
+.menu-list .ml[aria-current="true"]{background:var(--ink);color:#fff;font-weight:700}
+.menu-list .ml .tag-red{flex:0 0 auto}
+.mhead{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;background:var(--bg);border-radius:10px}
+.mhead b{font-size:18px}
+.calc{display:flex;flex-direction:column;gap:6px;font-size:16px}
+.calc > div{display:flex;justify-content:space-between;gap:10px}
+.calc .tot{border-top:1px solid var(--line);padding-top:8px;font-weight:900;font-size:18px}
+
+/* today / month */
+.hero{border-radius:22px;padding:28px 32px;display:flex;flex-wrap:wrap;gap:24px;align-items:center}
+.hero.good{background:var(--gbg)}.hero.bad{background:var(--rbg)}
+.hero .hl{flex:1 1 300px;display:flex;flex-direction:column;gap:6px}
+.hero .hlab{font-size:17px;font-weight:500}
+.hero.good .hlab,.hero.good .hs{color:var(--ink2)}.hero.bad .hlab,.hero.bad .hs{color:var(--rtx)}
+.hero .hv{font-size:58px;font-weight:900;line-height:1.1}
+.hero.good .hv{color:var(--g)}.hero.bad .hv{color:var(--r)}
+.hero .hs{font-size:15px}
+.hero .hbox{flex:1 1 380px;background:#fff;border-radius:14px;padding:16px 20px;display:flex;flex-direction:column;gap:8px;font-size:16px}
+.hbox > div{display:flex;justify-content:space-between;gap:12px}
+.hbox .m{color:var(--mut)}
+.hbox .foot{border-top:1px solid var(--line);padding-top:8px;font-size:14px;color:var(--mut);display:block}
+.bar{position:relative;height:16px;border-radius:999px;background:var(--gbar)}
+.bar .fill{height:16px;border-radius:999px;background:var(--g)}
+.hero.bad .bar{background:#F2C9C1}.hero.bad .bar .fill{background:var(--r)}
+.bar .mark{position:absolute;top:-6px;width:3px;height:28px;background:var(--ink)}
+.barlbl{position:relative;height:22px;font-size:14px;color:var(--ink2)}
+.barlbl span{position:absolute;white-space:nowrap}
+.stack{display:flex;gap:2px;height:44px;border-radius:10px;overflow:hidden;background:var(--line2)}
+.lg{display:flex;flex-wrap:wrap;gap:10px 28px;font-size:16px}
+.lg div{display:flex;align-items:center;gap:8px}
+.lg i{width:14px;height:14px;border-radius:4px;display:inline-block}
+.dayclosed{background:var(--graybg);color:var(--gray);border-radius:12px;padding:12px 16px;font-size:16px;font-weight:700}
+.linkbtn{background:none;border:0;padding:4px 0;text-decoration:underline;font-size:inherit;color:var(--ink2)}
+
+/* dialog / toast */
+dialog{border:0;border-radius:18px;padding:0;max-width:min(560px,94vw);width:100%;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(23,35,28,.45)}
+.dlg{padding:24px;display:flex;flex-direction:column;gap:16px}
+.dlg .dt{font-size:22px;font-weight:900}
+.dlg .ds{font-size:15px;color:var(--mut)}
+.dlg .dfs{display:flex;flex-direction:column;gap:12px}
+.dlg label{font-size:15px;font-weight:700;display:block;margin-bottom:4px}
+.preview{background:var(--gbg);border-radius:12px;padding:14px 16px}
+.preview .pv{font-size:28px;font-weight:900;color:var(--g)}
+.preview .ps{font-size:14px;color:var(--ink2)}
+.dacts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:14px;padding:14px 18px;font-size:16px;display:flex;gap:14px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:100;max-width:92vw}
+.toast button{background:#fff;color:var(--ink);border:0;border-radius:8px;padding:8px 12px;font-weight:700}
+.toast[hidden]{display:none}
+.adj-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line2)}
+.adj-row .nm{flex:1;font-weight:700}
+.adj-row .inp{width:150px}
+.adj-list{max-height:52vh;overflow:auto}
+@media (max-width:640px){
+  .wrap{padding:16px 16px 56px}
+  .h1{font-size:28px}
+  .hero{padding:20px}
+  .hero .hv{font-size:44px}
+  .menu-list{flex:1 1 100%}
+}
+</style>
+</head>
+<body>
+<div id="app"><div class="wrap"><div class="logo">모두의장부</div><p class="lead">장부를 여는 중이에요…</p></div></div>
+<dialog id="dlg"></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<input type="file" id="importFile" accept=".json,application/json" hidden>
+<script>
+'use strict';
+/* ============ 유틸 ============ */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+const pad = n => String(n).padStart(2, '0');
+const dstr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const today = () => dstr(new Date());
+const pdate = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = pdate(s); d.setDate(d.getDate() + n); return dstr(d); };
+const monthOf = s => s.slice(0, 7);
+const addMonths = (m, n) => { const [y, mo] = m.split('-').map(Number); const d = new Date(y, mo - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+const daysInMonth = m => { const [y, mo] = m.split('-').map(Number); return new Date(y, mo, 0).getDate(); };
+const monthDates = m => Array.from({ length: daysInMonth(m) }, (_, i) => `${m}-${pad(i + 1)}`);
+const WD = ['일', '월', '화', '수', '목', '금', '토'];
+const dLabel = s => { const d = pdate(s); return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WD[d.getDay()]}요일`; };
+const mLabel = m => `${m.slice(0, 4)}년 ${Number(m.slice(5))}월`;
+const mmdd = s => `${s.slice(5, 7)}/${s.slice(8, 10)}`;
+const num = v => { if (v == null) return null; const s = String(v).replace(/,/g, '').trim(); if (!s) return null; const m = s.match(/-?\d*\.?\d+/); return m ? Number(m[0]) : null; };
+const won = n => Math.round(n || 0).toLocaleString('ko-KR');
+const W = n => won(n) + '원';
+const SW = n => { const r = Math.round(n || 0); return (r > 0 ? '+' : r < 0 ? '−' : '') + won(Math.abs(r)) + '원'; };
+const MW = n => { const r = Math.round(n || 0); return (r < 0 ? '−' : '') + won(Math.abs(r)) + '원'; };
+const fmtQ = (n, d = 1) => (n == null || !isFinite(n)) ? '' : (Math.round(n * 10 ** d) / 10 ** d).toLocaleString('ko-KR', { maximumFractionDigits: d });
+const fmtS = n => Math.abs(n) >= 10 ? fmtQ(n, 0) : fmtQ(n, 1);
+const unitFmt = p => p >= 100 ? won(p) : fmtQ(p, p < 1 ? 2 : 1);
+const josa = (w, a, b) => { const c = String(w || '').trim().slice(-1).charCodeAt(0); if (c >= 0xAC00 && c <= 0xD7A3) return w + ((c - 0xAC00) % 28 ? a : b); return w + a + '(' + b + ')'; };
+const ceilTo = (n, s) => Math.ceil(n / s) * s;
+
+/* ============ 단위 ============ */
+const MASS = { g: 1, 그램: 1, kg: 1000, 킬로: 1000, 키로: 1000, mg: 0.001, 근: 600 };
+const VOL = { ml: 1, cc: 1, 미리: 1, l: 1000, 리터: 1000, floz: 29.6 };
+const OZ = ['oz', '온스', '온즈'];
+const TBSP = ['큰술', '큰스푼', 'tbsp', '밥숟가락', '숟가락'];
+const TSP = ['작은술', '작은스푼', 'tsp', '티스푼'];
+const HANDFUL = ['줌', '한줌', '움큼'];
+const PIECE = ['개', '알', '쪽', '장', '마리', '덩이', '조각', 'ea', '구'];
+const PACKW = ['봉지', '통', '팩', '병', '묶음', '박스', '상자', '캔', '봉', '포대', '망', '단', '판', 'box', '롤', '타'];
+
+function parseAmt(text) {
+  let s = String(text ?? '').trim();
+  if (!s) return null;
+  s = s.replace(/^한\s*/, '1 ').replace(/^반\s*/, '0.5 ').replace(/^두\s*/, '2 ').replace(/^세\s*/, '3 ');
+  const m = s.match(/^(\d+\/\d+|\d[\d,]*(?:\.\d+)?(?:\s+\d+\/\d+)?|\.\d+)?\s*(fl\.?\s*oz|[a-zA-Z가-힣]+)?\s*(.*)$/);
+  if (!m || (!m[1] && !m[2])) return null;
+  let n = 1, hasN = false;
+  if (m[1]) {
+    hasN = true; n = 0;
+    for (const p of m[1].replace(/,/g, '').split(/\s+/)) {
+      if (p.includes('/')) { const [a, b] = p.split('/').map(Number); n += b ? a / b : 0; } else n += Number(p);
+    }
+  }
+  return { n, hasN, unit: (m[2] || '').toLowerCase().replace(/[\s.]/g, ''), rest: (m[3] || '').trim() };
+}
+function dimOf(unit, kind) {
+  if (!unit) return null;
+  if (unit in MASS) return { dim: 'g', f: MASS[unit] };
+  if (unit in VOL) return { dim: 'ml', f: VOL[unit] };
+  if (OZ.includes(unit)) return kind === 'liquid' ? { dim: 'ml', f: 29.6 } : { dim: 'g', f: 28.35 };
+  if (PIECE.includes(unit)) return { dim: '개', f: 1 };
+  return null;
+}
+// 재료의 기준 단위(g/ml/개)와 산 양(기준 단위)
+function baseInfo(ing) {
+  const fb = ing.kind === 'liquid' ? 'ml' : 'g';
+  const p = parseAmt(ing.buyText);
+  if (!p) return { base: fb, qty: null };
+  const eq = p.rest.match(/^[=:]\s*(.+)$/) || p.rest.match(/^\((.+)\)$/);
+  if (PIECE.includes(p.unit) && eq) {
+    const q = parseAmt(eq[1]); const d = q && dimOf(q.unit, ing.kind);
+    if (d && d.dim !== '개') return { base: d.dim, qty: p.n * q.n * d.f, cap: q.n * d.f };
+  }
+  const d = dimOf(p.unit, ing.kind);
+  if (!d) return { base: fb, qty: p.unit ? null : p.n, err: p.unit ? `"${p.unit}" 대신 kg, g, L, ml, 개로 적어 주세요` : null };
+  return { base: d.dim, qty: p.n * d.f };
+}
+const baseUnit = ing => baseInfo(ing).base;
+function toDim(ing, n, unit) {
+  const liquid = ing.kind === 'liquid', c = ing.conv || {};
+  const bi = baseInfo(ing);
+  if (!unit) return { dim: bi.base, v: n };
+  if (unit in MASS) return { dim: 'g', v: n * MASS[unit] };
+  if (unit in VOL) return { dim: 'ml', v: n * VOL[unit] };
+  if (OZ.includes(unit)) return liquid ? { dim: 'ml', v: n * 29.6 } : { dim: 'g', v: n * 28.35 };
+  if (TBSP.includes(unit)) { if (liquid) return { dim: 'ml', v: n * 15 }; return num(c.tbsp) ? { dim: 'g', v: n * num(c.tbsp) } : { err: '1큰술이 몇 g인지 재료 화면 "단위"에서 적어 주세요' }; }
+  if (TSP.includes(unit)) { if (liquid) return { dim: 'ml', v: n * 5 }; return num(c.tsp) ? { dim: 'g', v: n * num(c.tsp) } : { err: '1작은술이 몇 g인지 재료 화면 "단위"에서 적어 주세요' }; }
+  if (HANDFUL.includes(unit)) return num(c.handful) ? { dim: liquid ? 'ml' : 'g', v: n * num(c.handful) } : { err: '한 줌이 몇 g인지 재료 화면 "단위"에서 적어 주세요' };
+  if (PIECE.includes(unit)) {
+    if (bi.base === '개') return { dim: '개', v: n };
+    const pc = num(c.piece) || bi.cap;
+    return pc ? { dim: bi.base, v: n * pc } : { err: `1개가 몇 ${bi.base}인지 재료 화면 "단위"에서 적어 주세요` };
+  }
+  return { err: `"${unit}" 단위를 모르겠어요 (g, ml, 큰술, 작은술, 온스, 개)` };
+}
+function toBase(ing, n, unit) {
+  const r = toDim(ing, n, unit); if (r.err) return r;
+  const b = baseUnit(ing);
+  if (r.dim === b) return { v: r.v };
+  if (b === '개') { const pc = num(ing.conv?.piece); return pc ? { v: r.v / pc } : { err: `1개가 몇 ${r.dim}인지 재료 화면 "단위"에서 적어 주세요` }; }
+  return { v: r.v }; // g ↔ ml 은 1:1 로 본다
+}
+function fmtBase(q, base) {
+  if (q == null) return '';
+  if (base === 'g' && q >= 1000) return fmtQ(q / 1000, 2) + ' kg';
+  if (base === 'ml' && q >= 1000) return fmtQ(q / 1000, 2) + ' L';
+  return fmtS(q) + ' ' + base;
+}
+
+/* ============ 기본값 ============ */
+const defaultChannels = () => [
+  { id: 'store', name: '매장', short: '매장', kind: 'store', app: 0, pay: 0, fee: 0, vat: false, edited: {} },
+  { id: 'baemin', name: '배달의민족', short: '배민', kind: 'app', app: 6.8, pay: 3, fee: 3000, vat: true, edited: {} },
+  { id: 'coupang', name: '쿠팡이츠', short: '쿠팡이츠', kind: 'app', app: 6.8, pay: 3, fee: 3000, vat: true, edited: {} },
+  { id: 'yogiyo', name: '요기요', short: '요기요', kind: 'app', app: 9.7, pay: 3, fee: 3000, vat: true, edited: {} },
+  { id: 'naver', name: '네이버 플레이스 포장', short: '네이버 포장', kind: 'pickup', app: 0, pay: 3, fee: 0, vat: true, edited: {} },
+  { id: 'own', name: '가게 배달', short: '가게 배달', kind: 'own', app: 0, pay: 0, fee: 0, vat: false, edited: {} },
+];
+const FIXED_NAMES = ['임대료', '인건비', '4대보험', '전기세', '수도세', '가스비', '인터넷', '음식물 쓰레기 수거비', '렌탈료'];
+function blankState() {
+  return {
+    app: 'modu-jangbu', version: 1, savedAt: null,
+    settings: { targetRate: 30, fallbackQty: 40, redDays: 1, yellowDays: 3, closedWeekdays: [], ratesVersion: null, ratesCheckedAt: null, dismissed: {} },
+    ingredients: [], menus: [], supplies: [], purchases: [], channels: defaultChannels(), fixedCosts: [], days: {}, rateNotice: null,
+  };
+}
+function mkIng(s, o, date, ts) {
+  const ing = { id: uid(), name: '', kind: 'weight', buyText: '', yield: 100, conv: {}, packText: '', minPacks: null, dailyManual: null, anchor: null, anchorAuto: true };
+  const paid = o.paid || 0, stock = o.stock; delete o.paid; delete o.stock;
+  Object.assign(ing, o);
+  const qty = baseInfo(ing).qty || 0;
+  const p = { id: uid(), itemId: ing.id, type: 'ing', date, ts, qty, paid, leftover: null, rawUnit: qty ? paid / qty : 0, addsToStock: false, anchored: true };
+  s.ingredients.push(ing); s.purchases.push(p);
+  ing.anchor = { date, ts, qty: stock ?? qty, usageAtAnchor: 0 };
+  return ing;
+}
+function mkSup(s, o, date, ts) {
+  const sup = { id: uid(), name: '', packText: '100개 묶음', price: null, minPacks: null, dailyManual: null, rule: { mode: 'order', menuId: 'all', count: 1 }, anchor: null, anchorAuto: true };
+  const packs = o.packs ?? 1, stockPacks = o.stockPacks; delete o.packs; delete o.stockPacks;
+  Object.assign(sup, o);
+  const size = parseAmt(sup.packText)?.n || 1;
+  const p = { id: uid(), itemId: sup.id, type: 'sup', date, ts, qty: packs * size, paid: (num(sup.price) || 0) * packs, leftover: null, addsToStock: false, anchored: true };
+  s.supplies.push(sup); s.purchases.push(p);
+  sup.anchor = { date, ts, qty: (stockPacks ?? packs) * size, usageAtAnchor: 0 };
+  return sup;
+}
+function seedState() {
+  const s = blankState(), d = today(), ts = Date.now();
+  const tor = mkIng(s, { name: '또르띠야', buyText: '30 개', paid: 9000 }, d, ts);
+  const pork = mkIng(s, { name: '우삽겹', buyText: '1 kg', paid: 14000, conv: { piece: 8 } }, d, ts);
+  const onion = mkIng(s, { name: '양파', buyText: '1 kg', paid: 2500, yield: 90 }, d, ts);
+  const cil = mkIng(s, { name: '고수', buyText: '100 g', paid: 2000, yield: 80 }, d, ts);
+  const salsa = mkIng(s, { name: '살사소스', kind: 'liquid', buyText: '1 L', paid: 8000 }, d, ts);
+  const taco = { id: uid(), name: '타코', prices: { store: 4500, baemin: 5500, coupang: 5500, yogiyo: 5500, naver: 4500, own: 4500 },
+    recipe: [{ id: uid(), ingId: tor.id, text: '2 개' }, { id: uid(), ingId: pork.id, text: '60 g' }, { id: uid(), ingId: onion.id, text: '30 g' }, { id: uid(), ingId: cil.id, text: '3 g' }, { id: uid(), ingId: salsa.id, text: '1 큰술' }, { id: uid(), fixed: true, label: '소금·후추·라임 등', won: 100 }] };
+  s.menus.push(taco);
+  mkSup(s, { name: '타코 포장용지', packText: '500장 묶음', price: 9000, minPacks: 0.2, rule: { mode: 'menu', menuId: taco.id, count: 1 } }, d, ts);
+  mkSup(s, { name: '포장 용기 (대)', packText: '50개 묶음', price: 18000, minPacks: 0.6, rule: { mode: 'order', menuId: 'all', count: 1 } }, d, ts);
+  mkSup(s, { name: '포장 봉투', packText: '100장 묶음', price: 5000, minPacks: 0.5, rule: { mode: 'order', menuId: 'all', count: 1 } }, d, ts);
+  mkSup(s, { name: '휴지(냅킨)', packText: '1,000장 팩', price: 6000, minPacks: 0.3, rule: { mode: 'order', menuId: 'all', count: 2 } }, d, ts);
+  s.fixedCosts = FIXED_NAMES.map(n => ({ id: uid(), name: n, annual: false, hist: [{ from: '2000-01', amount: 0 }] }));
+  return s;
+}
+// 시안과 같은 예시 장부 (둘러보기용)
+function demoState() {
+  const s = blankState(), t = today(), start = addDays(t, -25), ts0 = pdate(start).getTime();
+  const I = {};
+  const add = (k, o) => { I[k] = mkIng(s, o, start, ts0); };
+  add('pork', { name: '우삽겹', buyText: '1 kg', paid: 14000, conv: { piece: 8 }, packText: '1kg 봉지', minPacks: 1.5 });
+  add('pasta', { name: '디벨라 건면 파스타', buyText: '1 kg', paid: 3000, packText: '1kg 봉지', minPacks: 2 });
+  add('milk', { name: '우유', kind: 'liquid', buyText: '1 L', paid: 2200, packText: '1L 팩', minPacks: 2 });
+  add('cream', { name: '쿠킹크림', kind: 'liquid', buyText: '500 ml', paid: 4850, packText: '500ml 팩', minPacks: 2 });
+  add('parm', { name: '아담스 파마산 치즈', buyText: '1 kg', paid: 12570, conv: { tbsp: 5, tsp: 1.7 }, packText: '1kg 통', minPacks: 0.3 });
+  add('hon', { name: '혼다시', buyText: '1 kg', paid: 19000, conv: { tbsp: 12, tsp: 4 }, packText: '1kg 봉지', minPacks: 0.2 });
+  add('sugar', { name: '황설탕', buyText: '3 kg', paid: 5766, conv: { tbsp: 12, tsp: 4 }, packText: '3kg 봉지', minPacks: 0.3 });
+  add('garlic', { name: '냉동 마늘', buyText: '1 kg', paid: 2450, packText: '1kg 봉지', minPacks: 0.5 });
+  add('bread', { name: '곰곰 모닝빵', buyText: '10 개', paid: 4222, packText: '10개 봉지', minPacks: 1 });
+  add('leek', { name: '대파', buyText: '1 kg', paid: 3000, yield: 70, packText: '1kg 단', minPacks: 0.5 });
+  add('soy', { name: '간장', kind: 'liquid', buyText: '1.8 L', paid: 6900, packText: '1.8L 통', minPacks: 0.3 });
+  add('tor', { name: '또르띠야', buyText: '30 개', paid: 9000, packText: '30개 봉지', minPacks: 1 });
+  add('onion', { name: '양파', buyText: '1 kg', paid: 2500, yield: 90, packText: '1kg 망', minPacks: 1 });
+  add('rice', { name: '쌀', buyText: '10 kg', paid: 32000, packText: '10kg 포대', minPacks: 0.3 });
+  add('beans', { name: '블랙빈 통조림', buyText: '400 g', paid: 2400, packText: '400g 캔', minPacks: 2 });
+  add('lettuce', { name: '로메인', buyText: '1 kg', paid: 6000, yield: 80, packText: '1kg 박스', minPacks: 0.5 });
+  add('salsa', { name: '살사소스', kind: 'liquid', buyText: '1 L', paid: 8000, packText: '1L 병', minPacks: 0.5 });
+  const L = (k, text) => ({ id: uid(), ingId: I[k].id, text });
+  const FX = (label, won) => ({ id: uid(), fixed: true, label, won });
+  const M = (name, prices, recipe) => { const m = { id: uid(), name, prices, recipe }; s.menus.push(m); return m; };
+  const pasta = M('우삽겹 파스타', { store: 9500, baemin: 10500, coupang: 10500, yogiyo: 10500, naver: 9500, own: 9500 },
+    [L('pork', '10 개'), L('pasta', '80 g'), L('milk', '74 ml'), L('cream', '74 ml'), L('parm', '1 큰술'), L('hon', '1/4 작은술'), L('sugar', '1 작은술'), L('garlic', '30 g'), L('bread', '1 개'), FX('소금·후추·파슬리 등', 100)]);
+  const taco = M('타코', { store: 4500, baemin: 5500, coupang: 5500, yogiyo: 5500, naver: 4500, own: 4500 },
+    [L('tor', '2 개'), L('pork', '60 g'), L('onion', '30 g'), L('salsa', '1 큰술'), L('leek', '5 g'), FX('소금·후추·라임 등', 100)]);
+  const bowl = M('부리또볼', { store: 9000, baemin: 10000, coupang: 10000, yogiyo: 10000, naver: 9000, own: 9000 },
+    [L('rice', '200 g'), L('pork', '90 g'), L('beans', '60 g'), L('onion', '40 g'), L('salsa', '2 큰술'), L('lettuce', '30 g'), FX('소금·후추·소스 등', 150)]);
+  const salad = M('샐러드', { store: 8000, baemin: 9000, coupang: 9000, yogiyo: 9000, naver: 8000, own: 8000 },
+    [L('lettuce', '150 g'), L('pork', '60 g'), L('beans', '40 g'), L('parm', '2 큰술'), L('onion', '20 g'), FX('드레싱·견과류', 400)]);
+  const sups = [
+    mkSup(s, { name: '포장 용기 (대)', packText: '50개 묶음', price: 18000, minPacks: 0.6, rule: { mode: 'order', menuId: 'all', count: 1 } }, start, ts0),
+    mkSup(s, { name: '타코 포장용지', packText: '500장 묶음', price: 9000, minPacks: 0.2, rule: { mode: 'menu', menuId: taco.id, count: 1 } }, start, ts0),
+    mkSup(s, { name: '포장 봉투', packText: '100장 묶음', price: 5000, minPacks: 0.5, rule: { mode: 'order', menuId: 'all', count: 1 } }, start, ts0),
+    mkSup(s, { name: '휴지(냅킨)', packText: '1,000장 팩', price: 6000, minPacks: 0.3, rule: { mode: 'order', menuId: 'all', count: 2 } }, start, ts0),
+  ];
+  const fc = [['임대료', 1500000], ['인건비', 2200000], ['4대보험', 0], ['전기세', 210000], ['수도세', 40000], ['가스비', 130000], ['인터넷', 33000], ['음식물 쓰레기 수거비', 60000], ['렌탈료', 127000]];
+  s.fixedCosts = fc.map(([n, a]) => ({ id: uid(), name: n, annual: false, hist: [{ from: '2000-01', amount: a }] }));
+  s.fixedCosts.push({ id: uid(), name: '부가세·종합소득세 적립', annual: true, hist: [{ from: '2000-01', amount: 2400000 }] });
+  s.settings.closedWeekdays = [1];
+  // 판매 기록 (재현 가능한 가짜 숫자)
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+  for (let i = 20; i >= 0; i--) {
+    const d = addDays(t, -i); const wd = pdate(d).getDay();
+    if (s.settings.closedWeekdays.includes(wd)) continue;
+    const boost = (wd === 5 || wd === 6) ? 1.4 : 1;
+    const day = { sales: {}, orders: {}, ownCost: null, expenses: [], reviews: [], transfers: [], used: {} };
+    const mk = (m, base) => { day.sales[m.id] = { store: Math.round(ri(base[0], base[1]) * boost), baemin: ri(0, 2), coupang: ri(0, 1), yogiyo: ri(0, 1), naver: ri(0, 2), own: ri(0, 1) }; };
+    mk(pasta, [6, 10]); mk(taco, [9, 15]); mk(bowl, [3, 6]); mk(salad, [2, 5]);
+    for (const ch of ['baemin', 'coupang', 'yogiyo', 'naver', 'own']) {
+      let q = 0; for (const mid in day.sales) q += day.sales[mid][ch] || 0;
+      if (q) day.orders[ch] = Math.max(1, Math.ceil(q * 0.7));
+    }
+    if (day.orders.own) day.ownCost = day.orders.own * 3000;
+    day.expenses.push({ id: uid(), name: '카드 수수료', amount: ri(40, 60) * 100, memo: '' });
+    if (rnd() < 0.4) day.expenses.push({ id: uid(), name: '청소용품', amount: ri(30, 90) * 100, memo: '' });
+    if (rnd() < 0.5) day.reviews.push({ id: uid(), name: '리뷰 약속 타코 서비스', count: ri(1, 3), menuId: taco.id, perCost: null });
+    if (rnd() < 0.3) day.reviews.push({ id: uid(), name: '리뷰 이벤트 할인 쿠폰', count: 1, menuId: null, perCost: 3000 });
+    if (rnd() < 0.25) day.transfers.push({ id: uid(), amount: ri(10, 40) * 1000, memo: '단체 주문 선입금' });
+    s.days[d] = day;
+  }
+  // 최근 재구매 기록 (가격만 바뀐 예)
+  s.purchases.push({ id: uid(), itemId: I.pork.id, type: 'ing', date: addDays(t, -3), ts: ts0 + 1, qty: 10000, paid: 145000, leftover: null, rawUnit: 14.5, addsToStock: false, anchored: false });
+  // 현재 재고를 시안 숫자에 맞춤
+  S = s; C = {};
+  const target = { bread: 8, cream: 1600, garlic: 700, pork: 6400, pasta: 9000, soy: 900, sugar: 4500, milk: 3000, parm: 600, hon: 500, leek: 900, tor: 120, onion: 3000, rice: 7000, beans: 4000, lettuce: 1500, salsa: 1800 };
+  for (const k in I) if (target[k] != null) { const it = { type: 'ing', o: I[k] }; I[k].anchor = { date: t, ts: Date.now(), qty: target[k], usageAtAnchor: usage(it, t) }; I[k].anchorAuto = false; }
+  const supT = [40, 50, 300, 2000];
+  sups.forEach((o, i) => { const it = { type: 'sup', o }; o.anchor = { date: t, ts: Date.now(), qty: supT[i], usageAtAnchor: usage(it, t) }; o.anchorAuto = false; });
+  I.cream.dailyManual = 900; I.sugar.dailyManual = 60;
+  C = {};
+  return s;
+}
+function migrate(d) {
+  const s = Object.assign(blankState(), d || {});
+  s.settings = Object.assign(blankState().settings, s.settings || {});
+  for (const k of ['ingredients', 'menus', 'supplies', 'purchases', 'fixedCosts']) if (!Array.isArray(s[k])) s[k] = [];
+  if (!Array.isArray(s.channels) || !s.channels.length) s.channels = defaultChannels();
+  if (!s.days || typeof s.days !== 'object') s.days = {};
+  return s;
+}
+
+/* ============ 상태·되돌리기 ============ */
+let S = null, C = {};
+const ui = { tab: 'ing', menuId: null, date: today(), month: monthOf(today()), openUnits: {}, saving: false, idbOk: true };
+try { const t = localStorage.getItem('mj-tab'); if (t) ui.tab = t; } catch {}
+const hist = []; let lastKey = null, lastAt = 0;
+function commit(fn, key) {
+  const now = Date.now();
+  if (!(key && key === lastKey && now - lastAt < 2500)) { hist.push(JSON.stringify(S)); if (hist.length > 80) hist.shift(); }
+  lastKey = key || null; lastAt = now;
+  fn(S);
+  S.savedAt = new Date().toISOString();
+  C = {}; scheduleSave(); render();
+}
+function undo() {
+  if (!hist.length) return toast('되돌릴 게 없어요');
+  S = migrate(JSON.parse(hist.pop())); lastKey = null; C = {};
+  S.savedAt = new Date().toISOString();
+  scheduleSave(); render(); toast('방금 한 일을 되돌렸어요');
+}
+
+/* ============ 찾기 ============ */
+const findIng = id => S.ingredients.find(x => x.id === id);
+const findSup = id => S.supplies.find(x => x.id === id);
+const findMenu = id => S.menus.find(x => x.id === id);
+const findCh = id => S.channels.find(x => x.id === id);
+const findItem = id => { const i = findIng(id); if (i) return { type: 'ing', o: i }; const s = findSup(id); return s ? { type: 'sup', o: s } : null; };
+const stockItems = () => [...S.ingredients.map(o => ({ type: 'ing', o })), ...S.supplies.map(o => ({ type: 'sup', o }))];
+const nameOf = it => it.o.name || (it.type === 'ing' ? '(이름 없는 재료)' : '(이름 없는 포장재)');
+function dayOf(date, create) { if (!S.days[date] && create) S.days[date] = { sales: {}, orders: {}, ownCost: null, expenses: [], reviews: [], transfers: [], used: {} }; return S.days[date]; }
+function memo(key, f) { if (key in C) return C[key]; return (C[key] = f()); }
+
+/* ============ 계산 ============ */
+function purchasesOf(id) {
+  const g = memo('pur', () => { const m = {}; for (const p of S.purchases) (m[p.itemId] ||= []).push(p); for (const k in m) m[k].sort((a, b) => a.date.localeCompare(b.date) || a.ts - b.ts); return m; });
+  return g[id] || [];
+}
+const lastPurchase = id => { const ps = purchasesOf(id); return ps[ps.length - 1]; };
+function rawUnitAt(ing, date) { const ps = purchasesOf(ing.id); if (!ps.length) return 0; let r = ps[0]; for (const p of ps) if (p.date <= date) r = p; return r.rawUnit || 0; }
+const yieldF = ing => Math.max(1, num(ing.yield) || 100) / 100;
+const effUnit = (ing, date) => rawUnitAt(ing, date) / yieldF(ing);
+function lineCalc(line, date) {
+  if (line.fixed) return { cost: num(line.won) || 0 };
+  const ing = findIng(line.ingId); if (!ing) return { cost: 0, err: '재료를 골라 주세요' };
+  const p = parseAmt(line.text); if (!p) return { cost: 0, empty: true };
+  if (p.unit === '원') return { cost: p.n, fixedWon: true };
+  const b = toBase(ing, p.n, p.unit); if (b.err) return { cost: 0, err: b.err };
+  return { cost: b.v * effUnit(ing, date), base: b.v, gross: b.v / yieldF(ing), ing };
+}
+const menuCost = (m, date) => memo('mc' + m.id + date, () => m.recipe.reduce((a, l) => a + lineCalc(l, date).cost, 0));
+const priceOf = (m, ch) => { const v = m.prices?.[ch]; return v == null || v === '' ? null : num(v); };
+const isTakeout = ch => ch.kind !== 'store';
+const vatF = ch => ch.vat ? 1.1 : 1;
+const pctOf = ch => ((num(ch.app) || 0) + (num(ch.pay) || 0)) / 100;
+function chQty(day, chId) { let q = 0; for (const m in day?.sales || {}) q += num(day.sales[m][chId]) || 0; return q; }
+function menuQty(day, mid, takeoutOnly) { const r = day?.sales?.[mid]; if (!r) return 0; let q = 0; for (const ch of S.channels) if (!takeoutOnly || isTakeout(ch)) q += num(r[ch.id]) || 0; return q; }
+const reviewQty = (day, mid) => (day?.reviews || []).reduce((a, r) => a + (r.menuId === mid ? (num(r.count) || 0) : 0), 0);
+const ordersOf = (day, chId) => { const v = day?.orders?.[chId]; return v == null || v === '' ? chQty(day, chId) : num(v) || 0; };
+function chFee(ch, sales, orders, day) {
+  if (ch.kind === 'store') return 0;
+  const v = vatF(ch), pct = pctOf(ch);
+  if (ch.kind === 'own') { const oc = day?.ownCost; const del = oc != null && oc !== '' ? num(oc) || 0 : orders * (num(ch.fee) || 0) * v; return sales * pct * v + del; }
+  return sales * pct * v + orders * (num(ch.fee) || 0) * v;
+}
+function isClosed(date) { const d = S.days[date]; if (d && d.closed === true) return true; if (d && d.closed === false) return false; return (S.settings.closedWeekdays || []).includes(pdate(date).getDay()); }
+function fixedAmount(f, month) { let a = null; for (const h of f.hist || []) if (h.from <= month) a = num(h.amount) || 0; if (a == null) return 0; return f.annual ? Math.round(a / 12) : a; }
+function fixedRaw(f, month) { let a = null; for (const h of f.hist || []) if (h.from <= month) a = h.amount; return a; }
+const monthFixed = month => memo('mf' + month, () => S.fixedCosts.reduce((a, f) => a + fixedAmount(f, month), 0));
+const businessDays = month => memo('bd' + month, () => monthDates(month).filter(d => !isClosed(d)).length);
+const dailyShare = month => { const bd = businessDays(month); return bd ? monthFixed(month) / bd : 0; };
+function dayCalc(date) {
+  return memo('dc' + date, () => {
+    const day = S.days[date];
+    const per = {}; let revenue = 0, ing = 0, fees = 0, qty = 0, store = 0, takeout = 0;
+    for (const ch of S.channels) per[ch.id] = { sales: 0, qty: 0 };
+    for (const m of S.menus) {
+      const row = day?.sales?.[m.id]; if (!row) continue;
+      const cost = menuCost(m, date);
+      for (const ch of S.channels) {
+        const q = num(row[ch.id]) || 0; if (!q) continue;
+        const pr = priceOf(m, ch.id) ?? priceOf(m, 'store') ?? 0;
+        per[ch.id].sales += q * pr; per[ch.id].qty += q; ing += q * cost; qty += q;
+      }
+    }
+    for (const ch of S.channels) {
+      const p = per[ch.id];
+      p.orders = ch.kind === 'store' ? 0 : ordersOf(day, ch.id);
+      p.fee = (p.sales || p.orders || (ch.kind === 'own' && day?.ownCost)) ? chFee(ch, p.sales, p.orders, day) : 0;
+      p.received = p.sales - p.fee;
+      fees += p.fee; revenue += p.sales;
+      if (ch.kind === 'store') store += p.sales; else takeout += p.sales;
+    }
+    const transfers = (day?.transfers || []).reduce((a, t) => a + (num(t.amount) || 0), 0);
+    revenue += transfers;
+    const expenses = (day?.expenses || []).reduce((a, e) => a + (num(e.amount) || 0), 0);
+    let review = 0, reviewIng = 0;
+    for (const r of day?.reviews || []) {
+      const c = num(r.count) || 0; const m = r.menuId && findMenu(r.menuId);
+      const per1 = m ? menuCost(m, date) : (num(r.perCost) || 0);
+      review += c * per1; if (m) reviewIng += c * per1;
+    }
+    const closed = isClosed(date);
+    const share = closed ? 0 : dailyShare(monthOf(date));
+    const net = revenue - ing - expenses - fees - review - share;
+    return { per, revenue, store, takeout, transfers, ing, fees, expenses, review, reviewIng, share, net, qty, closed, has: !!day };
+  });
+}
+function monthCalc(month) {
+  return memo('mo' + month, () => {
+    const r = { revenue: 0, store: 0, takeout: 0, transfers: 0, ing: 0, fees: 0, expenses: 0, review: 0, reviewIng: 0, shareSoFar: 0, netSoFar: 0, qty: 0, daysWithSales: 0, menus: {} };
+    const t = today();
+    for (const d of monthDates(month)) {
+      if (d > t && !S.days[d]) continue;
+      const c = dayCalc(d);
+      for (const k of ['revenue', 'store', 'takeout', 'transfers', 'ing', 'fees', 'expenses', 'review', 'reviewIng', 'qty']) r[k] += c[k];
+      if (d <= t) { r.shareSoFar += c.share; r.netSoFar += c.net; }
+      if (c.qty > 0) r.daysWithSales++;
+      const day = S.days[d];
+      for (const m of S.menus) {
+        const q = menuQty(day, m.id); if (!q) continue;
+        const e = (r.menus[m.id] ||= { qty: 0, sales: 0, cost: 0 });
+        e.qty += q; e.cost += q * menuCost(m, d);
+        for (const ch of S.channels) { const qq = num(day.sales[m.id][ch.id]) || 0; e.sales += qq * (priceOf(m, ch.id) ?? priceOf(m, 'store') ?? 0); }
+      }
+    }
+    r.fixed = monthFixed(month);
+    r.net = r.revenue - r.ing - r.fees - r.expenses - r.review - r.fixed;
+    // 진행 중인 달은 오늘까지의 하루 몫만 뺀다 (하루 순 남는 돈의 합 = 월 순이익)
+    r.cur = month === monthOf(t);
+    r.fixedShown = r.cur ? r.shareSoFar : r.fixed;
+    r.netShown = r.cur ? r.netSoFar : r.net;
+    const menuRev = r.revenue - r.transfers;
+    r.avgRate = menuRev > 0 ? r.ing / menuRev : avgMenuRate();
+    r.breakEven = r.avgRate < 1 ? r.fixed / (1 - r.avgRate) : 0;
+    r.bought = S.purchases.filter(p => p.type === 'ing' && monthOf(p.date) === month).reduce((a, p) => a + (num(p.paid) || 0), 0);
+    return r;
+  });
+}
+function avgMenuRate() { const xs = S.menus.map(m => { const p = priceOf(m, 'store'); return p ? menuCost(m, today()) / p : null; }).filter(x => x != null); return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0.35; }
+function avgDailyQty() {
+  return memo('adq', () => { let tot = 0, n = 0; for (let i = 0; i < 30; i++) { const d = addDays(today(), -i); if (!S.days[d]) continue; const q = dayCalc(d).qty; if (q > 0) { tot += q; n++; } } return n ? { v: tot / n, auto: true, n } : { v: num(S.settings.fallbackQty) || 0, auto: false }; });
+}
+const unitShare = () => { const a = avgDailyQty(); return a.v ? dailyShare(monthOf(today())) / a.v : 0; };
+function menuNet(m, ch) {
+  const price = priceOf(m, ch.id); if (price == null) return null;
+  const cost = menuCost(m, today()); const v = vatF(ch);
+  const pctFee = ch.kind === 'store' ? 0 : price * pctOf(ch) * v;
+  const delFee = ch.kind === 'store' ? 0 : (num(ch.fee) || 0) * v;
+  const share = unitShare();
+  const fee = pctFee + delFee;
+  const net = price - cost - fee - share;
+  const be = (1 - pctOf(ch) * (ch.kind === 'store' ? 0 : v)) > 0 ? (cost + delFee + share) / (1 - (ch.kind === 'store' ? 0 : pctOf(ch) * v)) : null;
+  return { price, cost, pctFee, delFee, fee, share, net, gross: price - cost, be: be && ceilTo(be, 100) };
+}
+
+/* 재고 */
+function packInfo(item) {
+  const o = item.o;
+  if (item.type === 'ing') {
+    const bu = baseUnit(o), dn = o.kind === 'liquid' ? '통' : '봉지';
+    const p = parseAmt(o.packText);
+    if (p && p.unit && !PACKW.includes(p.unit)) { const b = toBase(o, p.n, p.unit); if (!b.err && b.v > 0) return { size: b.v, name: p.rest || dn, unit: bu }; }
+    return { size: baseInfo(o).qty || 1, name: (p && PACKW.includes(p.unit) && p.unit) || dn, unit: bu };
+  }
+  const p = parseAmt(o.packText);
+  return { size: p && p.n > 0 ? p.n : 1, name: (p && p.rest) || '묶음', unit: (p && p.unit && !PACKW.includes(p.unit) && p.unit) || '개' };
+}
+function parseStockInput(item, text) {
+  const p = parseAmt(text); if (!p) return null;
+  const pi = packInfo(item), u = p.unit;
+  if (!u || u === pi.name.toLowerCase() || PACKW.includes(u)) return p.n * pi.size;
+  if (item.type === 'ing') { const b = toBase(item.o, p.n, u); return b.err ? p.n * pi.size : b.v; }
+  if (u === pi.unit || PIECE.includes(u)) return p.n;
+  return p.n * pi.size;
+}
+function parseUseInput(item, text) {
+  const p = parseAmt(text); if (!p) return null;
+  const pi = packInfo(item);
+  if (PACKW.includes(p.unit) || p.unit === pi.name.toLowerCase()) return p.n * pi.size;
+  if (item.type === 'ing') { const b = toBase(item.o, p.n, p.unit); return b.err ? null : b.v; }
+  return p.n;
+}
+const stockLabel = (item, base) => { const pi = packInfo(item); return `${fmtQ(base / pi.size, 1)}${pi.name} (${fmtS(base)}${pi.unit})`; };
+const packTxt = (item, base) => { const pi = packInfo(item); return `${fmtQ(base / pi.size, 1)} ${pi.name}`; };
+const baseTxt = (item, base) => `(${fmtS(base)} ${packInfo(item).unit})`;
+function autoUsage(item, date) {
+  return memo('au' + item.o.id + date, () => {
+    const day = S.days[date]; if (!day) return 0;
+    let u = 0;
+    if (item.type === 'ing') {
+      for (const m of S.menus) {
+        const q = menuQty(day, m.id) + reviewQty(day, m.id); if (!q) continue;
+        for (const l of m.recipe) if (!l.fixed && l.ingId === item.o.id) { const c = lineCalc(l, date); if (c.gross) u += q * c.gross; }
+      }
+    } else {
+      const r = item.o.rule || {}, cnt = num(r.count) || 0;
+      if (r.mode === 'order') { for (const ch of S.channels) if (isTakeout(ch)) u += ordersOf(day, ch.id) * cnt; }
+      else if (r.mode === 'menu') { for (const m of S.menus) if (r.menuId === 'all' || r.menuId === m.id) u += menuQty(day, m.id, true) * cnt; }
+    }
+    return u;
+  });
+}
+function usage(item, date) { const man = S.days[date]?.used?.[item.o.id]; return man != null ? man : autoUsage(item, date); }
+function stockAt(item, upto) {
+  return memo('sa' + item.o.id + upto, () => {
+    const o = item.o, a = o.anchor || { date: '0000-00-00', ts: 0, qty: 0, usageAtAnchor: 0 };
+    const ps = purchasesOf(o.id).filter(p => p.addsToStock);
+    const dates = Object.keys(S.days);
+    let s;
+    if (upto >= a.date) {
+      s = a.qty;
+      for (const p of ps) if (p.date <= upto && (p.date > a.date || (p.date === a.date && p.ts > a.ts))) s += p.qty;
+      s -= usage(item, a.date) - (a.usageAtAnchor || 0);
+      for (const d of dates) if (d > a.date && d <= upto) s -= usage(item, d);
+    } else {
+      s = a.qty + (a.usageAtAnchor || 0);
+      for (const d of dates) if (d > upto && d < a.date) s += usage(item, d);
+      for (const p of ps) if (p.date > upto && (p.date < a.date || (p.date === a.date && p.ts <= a.ts))) s -= p.qty;
+    }
+    return Math.max(0, s);
+  });
+}
+function dailyUseAuto(item) {
+  return memo('du' + item.o.id, () => {
+    let tot = 0, n = 0;
+    for (let i = 0; i < 7; i++) { const d = addDays(today(), -i); if (!S.days[d] || dayCalc(d).qty <= 0) continue; tot += usage(item, d); n++; }
+    return n ? tot / n : null;
+  });
+}
+function stockStatus(item) {
+  return memo('ss' + item.o.id, () => {
+    const pi = packInfo(item), st = stockAt(item, today());
+    const auto = dailyUseAuto(item);
+    const du = item.o.dailyManual != null ? item.o.dailyManual : auto;
+    const minB = (num(item.o.minPacks) || 0) * pi.size;
+    const days = du ? st / du : null;
+    const red = num(S.settings.redDays) ?? 1, yel = num(S.settings.yellowDays) ?? 3;
+    let lv;
+    if (minB && st <= minB) lv = 'red';
+    else if (days == null) lv = 'gray';
+    else if (days <= red) lv = 'red'; else if (days <= yel) lv = 'yellow'; else lv = 'green';
+    return { lv, st, du, auto, days, pi };
+  });
+}
+const LV = { red: '위험', yellow: '조심', green: '양호', gray: '계산 중' };
+const lvOrder = { red: 0, yellow: 1, gray: 2, green: 3 };
+const stChip = lv => `<span class="st st-${lv}"><span class="dot" aria-hidden="true"></span>${LV[lv]}</span>`;
+const daysTxt = s => s.days == null ? '계산 중' : `${fmtQ(s.days, 1)}일 버텨요`;
+function stockLists() { return memo('sl', () => { const xs = stockItems().map(it => ({ it, s: stockStatus(it) })); return { red: xs.filter(x => x.s.lv === 'red'), yellow: xs.filter(x => x.s.lv === 'yellow') }; }); }
+
+/* ============ 화면: 공통 ============ */
+const app = document.getElementById('app');
+const TABS = [['ing', '1 재료', '산 재료와 가격'], ['menu', '2 메뉴', '재료비와 남는 돈'], ['today', '3 오늘 기록', '판 것과 쓴 돈'], ['month', '4 이번 달 결과', '얼마 남았는지']];
+const I = (k, val, a = '') => `<input class="inp ${a.includes('num') ? 'num' : ''}" data-k="${esc(k)}" value="${esc(val ?? '')}" ${a.replace('num', '')}>`;
+const IN = (k, val, ph = '', label = '', cls = '') => `<input class="inp num ${cls}" inputmode="decimal" data-k="${esc(k)}" value="${esc(val ?? '')}" placeholder="${esc(ph)}" aria-label="${esc(label)}">`;
+const IT = (k, val, ph = '', label = '', cls = '') => `<input class="inp ${cls}" data-k="${esc(k)}" value="${esc(val ?? '')}" placeholder="${esc(ph)}" aria-label="${esc(label)}">`;
+const money = v => v == null || v === '' ? '' : won(v);
+
+function statusHtml() {
+  if (ui.saving) return `<div class="status wait"><span class="dot"></span>저장 중…</div>`;
+  if (fileState === 'lost') return `<div class="status bad"><span class="dot"></span>저장 파일 연결이 끊겼어요</div>`;
+  if (!ui.idbOk && fileState !== 'ok') return `<div class="status bad"><span class="dot"></span>저장이 안 되고 있어요</div>`;
+  return `<div class="status"><span class="dot"></span>자동 저장됨${fileState === 'ok' ? ' · 파일에도 저장' : ''}</div>`;
+}
+function pill(level, list) {
+  const red = level === 'red', n = list.length;
+  return `<details name="stock" class="sp" data-keep="pop-${level}">
+<summary class="pill ${n ? 'pill-' + level : 'pill-zero'}"><span class="dot" aria-hidden="true"></span>${red ? '재고 위험' : '조심'} ${n}<span class="caret" aria-hidden="true">▾</span></summary>
+<div class="pop ${red ? '' : 'pop-right'}">
+<div class="pop-h"><span class="pop-t" style="color:${red ? 'var(--r)' : 'var(--ytx)'}">${red ? '지금 사야 해요' : '곧 사야 해요'} (${n})</span><button type="button" class="btn-sm" data-a="closePop" aria-label="닫기">닫기 ✕</button></div>
+${n ? list.map(x => `<div class="pop-row"><div class="col"><b>${esc(nameOf(x.it))}</b><span class="sub">남은 양 ${stockLabel(x.it, x.s.st)}</span></div><div class="rr"><span class="days" style="color:${red ? 'var(--r)' : 'var(--ytx)'}">${daysTxt(x.s)}</span><button type="button" class="btn-rebuy" data-a="rebuy" data-id="${x.it.o.id}">재구매</button></div></div>`).join('') : `<div class="pop-empty">지금은 없어요.</div>`}
+<div class="pop-f"><button type="button" class="btn-soft" data-a="gotoStock">재고 화면에서 전체 보기</button><button type="button" class="btn-dark" data-a="closePop">닫기</button></div>
+</div></details>`;
+}
+function headerHtml() {
+  const mc = monthCalc(monthOf(today())), sl = stockLists();
+  return `<header class="top">
+<div class="brand"><div class="logo">모두의장부</div><div id="status">${statusHtml()}</div><button type="button" class="btn-line" data-a="undo" ${hist.length ? '' : 'disabled'}>방금 한 일 되돌리기</button></div>
+<div class="topbox">
+<div class="col"><span class="tb-lbl">이번 달 남는 돈</span><span class="tb-big ${mc.netShown >= 0 ? 'pos' : 'neg'}">${MW(mc.netShown)}</span></div>
+<span class="vsep" aria-hidden="true"></span>
+<div class="col" style="gap:6px"><span class="tb-lbl">재고 상태 · 눌러서 목록으로 보기</span><div class="pills">${pill('red', sl.red)}${pill('yellow', sl.yellow)}</div></div>
+</div></header>`;
+}
+function bannersHtml() {
+  const b = [], ds = S.settings.dismissed || {};
+  if (fileState === 'lost') b.push(`<div class="banner banner-red" role="alert"><div class="col"><b>저장 파일과 연결이 끊겼어요</b><span>지금 적는 내용은 브라우저에만 저장돼요. 아래 버튼을 누르고 "허용"을 눌러 주세요.</span></div><div class="acts"><button type="button" class="btn-red" data-a="reconnect">다시 연결하기</button></div></div>`);
+  else if (fileState === 'none' && !ds.file) b.push(`<div class="banner banner-yellow"><div class="col"><b>처음 한 번, 장부를 저장할 파일을 골라 주세요</b><span>고르면 적을 때마다 그 파일에도 자동으로 저장돼요. 구글 드라이브·원드라이브 폴더를 고르면 클라우드 백업도 돼요.</span></div><div class="acts"><button type="button" class="btn-dark" data-a="pickFile">저장 위치 고르기</button><button type="button" class="btn-line" data-a="dismiss" data-id="file">나중에</button></div></div>`);
+  if (S.rateNotice) {
+    const ch = S.rateNotice.changes || [];
+    const auto = ch.filter(c => c.applied), mine = ch.filter(c => !c.applied);
+    b.push(`<div class="banner banner-red" role="alert"><div class="col"><b>배달앱 수수료 기본값이 바뀌었어요 (${esc(S.rateNotice.version || '')})</b>
+${auto.length ? `<span>자동으로 바꿨어요: ${auto.map(c => `${esc(findCh(c.id)?.short || c.id)} ${FLD[c.f]} ${fmtQ(c.old, 2)}→${fmtQ(c.nw, 2)}${c.f === 'fee' ? '원' : '%'}`).join(', ')}</span>` : ''}
+${mine.length ? `<span>직접 고친 값은 그대로 뒀어요. 새 기본값: ${mine.map(c => `${esc(findCh(c.id)?.short || c.id)} ${FLD[c.f]} ${fmtQ(c.nw, 2)}${c.f === 'fee' ? '원' : '%'}`).join(', ')}</span>` : ''}
+</div><div class="acts">${mine.length ? `<button type="button" class="btn-line" data-a="applyRates">새 기본값으로 바꾸기</button>` : ''}<button type="button" class="btn-dark" data-a="dismissRates">확인했어요</button></div></div>`);
+  }
+  const standalone = matchMedia('(display-mode: standalone)').matches;
+  if (!standalone && !ds.install && location.protocol.startsWith('http')) b.push(`<div class="banner banner-green"><div class="col"><b>설치하면 프로그램처럼 쓸 수 있어요</b><span>${deferredInstall ? '아래 "설치하기"를 누르면 바탕화면에 아이콘이 생겨요.' : '주소창 오른쪽의 설치 버튼(모니터 모양)을 누르면 바탕화면에 아이콘이 생겨요.'} 한 번 열어 두면 인터넷이 끊겨도 열려요.</span></div><div class="acts">${deferredInstall ? `<button type="button" class="btn-dark" data-a="install">설치하기</button>` : ''}<button type="button" class="btn-line" data-a="dismiss" data-id="install">닫기</button></div></div>`);
+  return b.join('');
+}
+const FLD = { app: '앱 수수료', pay: '결제 수수료', fee: '배달비' };
+function view() {
+  const tabs = `<nav class="tabs" aria-label="화면">${TABS.map(([id, t, s]) => `<button type="button" class="tab" data-a="tab" data-id="${id}" ${ui.tab === id ? 'aria-current="page"' : ''}><b>${t}</b><span>${s}</span></button>`).join('')}</nav>`;
+  const body = { ing: viewIng, menu: viewMenu, today: viewToday, month: viewMonth }[ui.tab] || viewIng;
+  return `<div class="wrap">${headerHtml()}<div id="banners" style="display:flex;flex-direction:column;gap:10px">${bannersHtml()}</div>${tabs}${body()}</div>`;
+}
+
+/* ============ 화면 1: 재료 ============ */
+function viewIng() {
+  const t = today();
+  const rows = S.ingredients.map(ing => {
+    const bi = baseInfo(ing), lp = lastPurchase(ing.id), eu = effUnit(ing, t);
+    const open = ui.openUnits[ing.id];
+    const conv = ing.conv || {};
+    const cu = ing.kind === 'liquid' ? 'ml' : 'g';
+    return `<tr>
+<td>${IT('ing.name:' + ing.id, ing.name, '예: 우삽겹', '재료 이름')}</td>
+<td><button type="button" class="btn-rebuy" data-a="rebuy" data-id="${ing.id}" aria-label="${esc(ing.name)} 재구매">재구매</button></td>
+<td><div class="seg" role="group" aria-label="액체 또는 무게"><button type="button" data-a="kind" data-id="${ing.id}" data-v="liquid" aria-pressed="${ing.kind === 'liquid'}">액체</button><button type="button" data-a="kind" data-id="${ing.id}" data-v="weight" aria-pressed="${ing.kind !== 'liquid'}">무게</button></div></td>
+<td>${IT('ing.buyText:' + ing.id, ing.buyText, ing.kind === 'liquid' ? '예: 1 L' : '예: 1 kg', '산 양')}${bi.err ? `<div class="hint err">${esc(bi.err)}</div>` : ''}</td>
+<td>${IN('ing.paid:' + ing.id, money(lp?.paid), '예: 14,000', '낸 돈')}</td>
+<td style="font-weight:700">${bi.qty ? `${unitFmt(eu)}원 <span class="mut" style="font-weight:400">/ ${bi.base}</span>` : '<span class="mut" style="font-weight:400">-</span>'}${lp?.leftover != null ? '<div class="hint">남은 재료와 섞은 값</div>' : ''}</td>
+<td><div class="unit">${IN('ing.yield:' + ing.id, ing.yield, '100', '손질하고 남는 양')}<span>%</span></div></td>
+<td><div style="display:flex;gap:2px"><button type="button" class="btn-del" data-a="units" data-id="${ing.id}" aria-expanded="${!!open}">단위 ${open ? '▴' : '▾'}</button><button type="button" class="btn-del" data-a="delIng" data-id="${ing.id}">지우기</button></div></td>
+</tr>${open ? `<tr><td colspan="8" style="background:var(--bg);border-radius:10px"><div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;padding:6px 4px">
+<div class="mut" style="flex:1 1 100%;font-size:15px">${ing.kind === 'liquid' ? '액체는 온스·큰술·작은술이 ml로 자동으로 바뀌어요 (1온스 ≈ 29.6ml, 1큰술 15ml, 1작은술 5ml). 개수로 쓰면 1개가 몇 ml인지 적어요.' : '큰술·작은술·한 줌·개로 쓰려면 한 번만 재서 적어 두세요. 온스는 무게(1oz ≈ 28.35g)로 계산해요.'}</div>
+${ing.kind === 'liquid' ? '' : `<div class="fld"><label>1큰술 = 몇 g</label>${IN('ing.conv:' + ing.id + ':tbsp', conv.tbsp, '예: 12', '1큰술 g')}</div><div class="fld"><label>1작은술 = 몇 g</label>${IN('ing.conv:' + ing.id + ':tsp', conv.tsp, '예: 4', '1작은술 g')}</div>`}
+<div class="fld"><label>한 줌 = 몇 ${cu}</label>${IN('ing.conv:' + ing.id + ':handful', conv.handful, '예: 30', '한 줌')}</div>
+${bi.base === '개' ? `<div class="fld"><label>1개 = 몇 g</label>${IN('ing.conv:' + ing.id + ':piece', conv.piece, '예: 40', '1개 무게')}</div>` : `<div class="fld"><label>1개 = 몇 ${bi.base}</label>${IN('ing.conv:' + ing.id + ':piece', conv.piece ?? (bi.cap || ''), '예: 8', '1개 무게')}</div>`}
+</div></td></tr>` : ''}`;
+  }).join('');
+  const ingCards = S.ingredients.map(o => ({ type: 'ing', o })).sort((a, b) => lvOrder[stockStatus(a).lv] - lvOrder[stockStatus(b).lv]);
+  const supCards = S.supplies.map(o => ({ type: 'sup', o })).sort((a, b) => lvOrder[stockStatus(a).lv] - lvOrder[stockStatus(b).lv]);
+  return `<div class="col" style="gap:6px"><h1 class="h1">산 재료와 가격을 적어요</h1><p class="lead">산 양과 낸 돈만 적으면, 1g (또는 1ml, 1개) 가격이 자동으로 나와요. 저장 버튼은 없어요. 적는 순간 저장돼요.</p></div>
+<div class="card">
+<div class="tw"><table class="t" style="min-width:1040px;table-layout:fixed">
+<colgroup><col style="width:17%"><col style="width:9%"><col style="width:13%"><col style="width:12%"><col style="width:13%"><col style="width:13%"><col style="width:11%"><col style="width:12%"></colgroup>
+<thead><tr><th>재료 이름</th><th>재구매</th><th>액체 / 무게</th><th>산 양</th><th>낸 돈 (원)</th><th>1g당 가격 (자동)</th><th>손질하고 남는 양</th><th><span class="sr">단위, 지우기</span></th></tr></thead>
+<tbody>${rows || `<tr><td colspan="8" class="mut" style="padding:20px 8px">아직 재료가 없어요. 아래 "+ 재료 추가"를 눌러요.</td></tr>`}</tbody></table></div>
+<div><button type="button" class="btn-add" data-a="addIng">+ 재료 추가</button></div>
+<div class="guide">
+<div class="gt">장 봐 왔으면 "재구매"를 눌러요. 누르면 이렇게 돼요.</div>
+${['작은 창이 떠요. 오늘 산 양, 낸 돈, 지금 남아 있는 양을 적어요. 남은 양을 모르면 비워 둬도 돼요.', '저장하면 재료 가격이 새로 계산돼요. 남은 재료는 옛날 가격, 새로 산 재료는 새 가격이라서 둘을 섞어 평균을 내요.', '지금 남은 재고가 산 양만큼 늘어나요. 재고 카드에도 바로 반영돼요.', '산 날짜와 가격이 구매 기록에 남고, 이번 달 장 본 돈에 더해져요.', '메뉴 재료비와 남는 돈이 새 가격으로 다시 계산돼요. 이미 지난 날짜의 기록은 그날 가격 그대로 남아요.'].map((x, i) => `<div class="step"><span class="n">${i + 1}</span><span class="tx">${x}</span></div>`).join('')}
+<div class="ex"><b style="color:var(--r)">예) 우삽겹</b> 500g이 남아 있고 1g에 14원이에요. 1kg를 15,000원에 새로 사면 (500g × 14원 + 15,000원) ÷ 1,500g ≈ <b>14.7원</b>이 새 가격이에요. 남은 양을 비우면 새 가격(1g에 15원)으로 바로 바뀌어요.</div>
+</div>
+</div>
+<div class="card" id="stock">
+<div class="titlebar"><div class="h2">재고 (남은 재료와 포장재)</div><button type="button" class="btn-line" data-a="adjust">실제 남은 양 맞추기</button></div>
+<div class="legend">${stChip('red')}<span>하루도 못 버텨요. 오늘 사야 해요.</span>${stChip('yellow')}<span>며칠 안에 떨어져요. 곧 사야 해요.</span>${stChip('green')}<span>넉넉해요.</span>${stChip('gray')}<span>판매 기록이 쌓이면 계산해요.</span></div>
+<div class="legend" style="font-size:14px">기준:<label class="unit">위험은 <input class="inp sm num" style="width:70px" inputmode="decimal" data-k="set.redDays" value="${esc(S.settings.redDays)}" aria-label="위험 기준 일수"><span>일 이하</span></label><label class="unit">조심은 <input class="inp sm num" style="width:70px" inputmode="decimal" data-k="set.yellowDays" value="${esc(S.settings.yellowDays)}" aria-label="조심 기준 일수"><span>일 이하</span></label><span>또는 "이 밑이면 위험"보다 적으면 위험</span></div>
+<div class="h3">재료</div>
+<div class="scards">${ingCards.map(stockCard).join('') || '<div class="mut">재료를 추가하면 여기에 재고 카드가 자동으로 생겨요.</div>'}</div>
+<div class="mut" style="font-size:15px">재료는 위 표에 추가하면 여기에 자동으로 생겨요. 메뉴 레시피에 들어가지 않는 재료는 쓴 양이 자동으로 빠지지 않아서, 남은 양을 직접 고쳐 주세요.</div>
+<div class="titlebar" style="margin-top:8px"><div class="h3">포장재 (포장 용기, 포장용지, 휴지, 봉투 등)</div><button type="button" class="btn-add" data-a="addSup">+ 포장재 추가</button></div>
+<div class="scards">${supCards.map(stockCard).join('') || '<div class="mut">포장재가 없어요.</div>'}</div>
+<div class="notes">
+<span>포장재 이름은 가게에서 쓰는 대로 직접 적어요. 원하는 만큼 추가하고 이름을 바꾸거나 지울 수 있어요.</span>
+<span>"어디에 써요?"에 메뉴나 주문 기준으로 몇 개 쓰는지 적어 두면, 포장·배달로 팔릴 때마다 남은 양이 자동으로 줄어요. 예: 타코 1개마다 1장, 주문 1건마다 휴지 2장.</span>
+<span>몇 봉지 샀는지, 지금 몇 봉지 남았는지 산 단위 그대로 적어요. 반 통은 0.5통이에요. 괄호 안은 g, ml, 개로 바꾼 값이에요.</span>
+<span>하루에 쓰는 양은 최근 7일 판매로 자동 계산해요. 실제와 다르면 직접 고치면 돼요. 고친 값을 우선으로 쓰고 "직접 고침"이라고 표시해요.</span>
+</div>
+</div>
+<div class="row">
+<div class="help"><div class="ht">손질하고 남는 양이 뭐예요?</div><div class="hb">귤 한 박스를 사도 껍질은 못 먹는 것처럼, 대파 1kg을 사서 뿌리와 겉잎을 떼면 700g만 남아요. 그럴 땐 70%라고 적으면, 버리는 부분 값까지 넣어서 계산해요.</div></div>
+<div class="help"><div class="ht">액체와 무게는 뭐예요?</div><div class="hb">우유·크림·소스처럼 따르는 건 "액체"예요. 온스와 큰술이 ml로 자동으로 바뀌어요. 고기·가루처럼 무게로 다루는 건 "무게"예요. 큰술이 몇 g인지는 재료마다 "단위"를 눌러 한 번만 알려주면 돼요.</div></div>
+</div>`;
+}
+function stockCard(it) {
+  const o = it.o, s = stockStatus(it), pi = s.pi, lp = lastPurchase(o.id), id = o.id;
+  const isSup = it.type === 'sup';
+  const rule = o.rule || {};
+  const useHint = o.dailyManual != null ? `<span class="mine">직접 고침</span> · ${s.auto != null ? '자동 계산 ' + fmtS(s.auto) + ' ' + pi.unit : '판매 기록 없음'} <button type="button" class="linkbtn" data-a="clearUse" data-id="${id}">자동으로</button>` : (s.auto != null ? `자동 계산 ${fmtS(s.auto)} ${pi.unit}` : '판매 기록이 쌓이면 채워요');
+  return `<div class="scard lv-${s.lv}">
+<div class="sc-top">
+${isSup ? `<div style="width:220px">${IT('sup.name:' + id, o.name, '예: 타코 포장용지', '포장재 이름')}</div>` : `<span class="sc-name">${esc(nameOf(it))}</span>`}
+${stChip(s.lv)}
+<span class="sc-days" style="color:${{ red: 'var(--r)', yellow: 'var(--ytx)', green: 'var(--g)', gray: 'var(--gray)' }[s.lv]}">${daysTxt(s)}</span>
+<span class="sc-sp"></span>
+${isSup ? `<button type="button" class="btn-del" data-a="delSup" data-id="${id}">지우기</button>` : ''}
+<button type="button" class="btn-rebuy" data-a="rebuy" data-id="${id}">재구매</button>
+</div>
+<div class="sc-fields">
+<div class="fld"><label>한 번에 사는 단위</label>${IT('st.pack:' + id, o.packText, isSup ? '예: 50개 묶음' : `예: ${(o.buyText || '1 kg').replace(/\s+/g, '')} 봉지`, nameOf(it) + ' 단위', 'sm num')}<div class="hint">&nbsp;</div></div>
+<div class="fld"><label>마지막에 산 양</label>${IT('st.last:' + id, lp ? packTxt(it, lp.qty) : '', '예: 2 ' + pi.name, nameOf(it) + ' 산 양', 'sm num')}<div class="hint">${lp ? mmdd(lp.date) + '에 샀어요' : '&nbsp;'}</div></div>
+<div class="fld"><label>지금 남은 양</label>${IT('st.now:' + id + ':' + today(), packTxt(it, s.st), '예: 0.5 ' + pi.name, nameOf(it) + ' 남은 양', 'sm num')}<div class="hint">${baseTxt(it, s.st)}</div></div>
+<div class="fld" style="flex-basis:190px"><label>하루에 쓰는 양</label>${IT('st.use:' + id, o.dailyManual != null ? fmtS(o.dailyManual) + ' ' + pi.unit : '', s.auto != null ? fmtS(s.auto) + ' ' + pi.unit + ' (자동)' : '비어 있음 (계산 중)', nameOf(it) + ' 하루 쓰는 양', 'sm num')}<div class="hint">${useHint}</div></div>
+<div class="fld"><label>이 밑이면 위험</label>${IT('st.min:' + id, o.minPacks != null ? fmtQ(o.minPacks, 2) + ' ' + pi.name : '', '예: 1 ' + pi.name, nameOf(it) + ' 최소 재고', 'sm num')}<div class="hint">&nbsp;</div></div>
+${isSup ? `<div class="fld"><label>한 ${esc(pi.name)} 가격 (원)</label>${IN('sup.price:' + id, money(o.price), '예: 18,000', o.name + ' 가격', 'sm')}<div class="hint">&nbsp;</div></div>
+<div class="fld wide"><span class="lb">어디에 써요? (고칠 수 있어요)</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+<select class="inp sm" style="width:auto" data-k="sup.mode:${id}" aria-label="${esc(o.name)} 쓰는 기준"><option value="order" ${rule.mode === 'order' ? 'selected' : ''}>포장·배달 주문 1건마다</option><option value="menu" ${rule.mode === 'menu' ? 'selected' : ''}>메뉴 1개(포장·배달)마다</option><option value="none" ${rule.mode === 'none' ? 'selected' : ''}>자동으로 안 빼요</option></select>
+${rule.mode === 'menu' ? `<select class="inp sm" style="width:auto" data-k="sup.menu:${id}" aria-label="어느 메뉴"><option value="all" ${rule.menuId === 'all' ? 'selected' : ''}>모든 메뉴</option>${S.menus.map(m => `<option value="${m.id}" ${rule.menuId === m.id ? 'selected' : ''}>${esc(m.name || '(이름 없음)')}</option>`).join('')}</select>` : ''}
+${rule.mode !== 'none' ? `<input class="inp sm num" style="width:70px" inputmode="decimal" data-k="sup.count:${id}" value="${esc(rule.count ?? '')}" aria-label="몇 개"><span class="mut">${esc(pi.unit)}</span>` : ''}
+</div><div class="hint">&nbsp;</div></div>` : ''}
+</div></div>`;
+}
+
+/* ============ 화면 2: 메뉴 ============ */
+function viewMenu() {
+  if (!S.menus.length) return `<div class="col" style="gap:6px"><h1 class="h1">메뉴에 재료와 양을 넣어요</h1><p class="lead">평소 말하는 단위 그대로 적으면 돼요.</p></div><div class="card" style="align-items:flex-start"><div class="h2">아직 메뉴가 없어요</div><button type="button" class="btn-add" data-a="addMenu">+ 메뉴 추가</button></div>${feeCard()}`;
+  if (!findMenu(ui.menuId)) ui.menuId = S.menus[0].id;
+  const m = findMenu(ui.menuId), t = today();
+  const cost = menuCost(m, t), sp = priceOf(m, 'store');
+  const target = num(S.settings.targetRate) || 30;
+  const storeN = menuNet(m, findCh('store'));
+  const dCh = ['baemin', 'coupang', 'yogiyo', 'naver', 'own'].map(findCh).concat(S.channels.filter(c => c.custom)).find(c => c && priceOf(m, c.id) != null);
+  const dN = dCh && menuNet(m, dCh);
+  const rate = sp ? cost / sp * 100 : null;
+  const over = rate != null && rate > target;
+  const lines = m.recipe.map(l => {
+    const c = lineCalc(l, t);
+    if (l.fixed) return `<tr><td>${IT('line.label:' + m.id + ':' + l.id, l.label, '예: 소금·후추·파슬리 등', '고정 금액 이름')}</td><td><div class="unit">${IN('line.won:' + m.id + ':' + l.id, money(l.won), '100', '고정 금액')}<span>원 (한 번에 묶어서)</span></div></td><td class="r" style="font-weight:700">${W(c.cost)}</td><td><button type="button" class="btn-del" data-a="delLine" data-id="${m.id}" data-v="${l.id}">빼기</button></td></tr>`;
+    const ing = findIng(l.ingId);
+    let hint = '';
+    if (c.err) hint = `<div class="hint err">${esc(c.err)}</div>`;
+    else if (c.base != null) { const p = parseAmt(l.text); const bu = baseUnit(ing); if (p && p.unit && !(p.unit in MASS && bu === 'g' && p.unit === 'g') && p.unit !== bu) hint = `<div class="hint">= ${fmtS(c.base)} ${bu}${yieldF(ing) < 1 ? ` (손질 전 ${fmtS(c.gross)} ${bu})` : ''}</div>`; else if (yieldF(ing) < 1) hint = `<div class="hint">손질 전 ${fmtS(c.gross)} ${bu}</div>`; }
+    return `<tr><td><select class="inp" data-k="line.ing:${m.id}:${l.id}" aria-label="재료 고르기">${ing ? '' : '<option value="">재료 고르기</option>'}${S.ingredients.map(i => `<option value="${i.id}" ${i.id === l.ingId ? 'selected' : ''}>${esc(i.name || '(이름 없음)')}</option>`).join('')}</select></td>
+<td>${IT('line.text:' + m.id + ':' + l.id, l.text, '예: 80 g, 1 큰술, 5 온스, 2 개', (ing?.name || '재료') + ' 쓰는 양')}${hint}</td><td class="r" style="font-weight:700">${W(c.cost)}</td><td><button type="button" class="btn-del" data-a="delLine" data-id="${m.id}" data-v="${l.id}">빼기</button></td></tr>`;
+  }).join('');
+  // 경고 문장
+  const warns = [];
+  if (storeN && storeN.net < 0) warns.push(`${josa(m.name, '은', '는')} ${won(storeN.price)}원으로는 매장에서도 남지 않아요(${won(storeN.be)}원 이상이어야 남아요).`);
+  const badD = S.channels.filter(c => isTakeout(c)).map(c => ({ c, n: menuNet(m, c) })).filter(x => x.n && x.n.net < 0);
+  if (badD.length) { const w = badD.sort((a, b) => a.n.net - b.n.net)[0]; warns.push(`${w.c.short}에서는 ${won(w.n.price)}원에 팔아도 적자라서 ${won(w.n.be)}원 이상이어야 남아요.${badD.length > 1 ? ` (적자인 곳: ${badD.map(x => x.c.short).join(', ')})` : ''} 아니면 한 주문에 여러 개 묶어서 팔아야 해요.`); }
+  const adq = avgDailyQty(), share = unitShare(), ds = dailyShare(monthOf(t));
+  return `<div class="col" style="gap:6px"><h1 class="h1">메뉴에 재료와 양을 넣어요</h1><p class="lead">평소 말하는 단위 그대로 적으면 돼요. 큰술, 작은술, 온스, 개, g 다 돼요.</p></div>
+<div class="row">
+<div class="stat"><span class="l">이 메뉴 1개 재료비</span><span class="v">${W(cost)}</span>${rate != null ? `<span class="s" style="${over ? 'color:var(--r);font-weight:700' : ''}">재료비 비율 ${fmtQ(rate, 0)}%${over ? ` · 목표 ${target}% 넘음` : ''}</span>` : ''}</div>
+<div class="stat"><label class="l" for="price-store">파는 가격 (매장)</label><div class="unit"><input id="price-store" class="inp big num" inputmode="decimal" data-k="menu.price:${m.id}:store" value="${esc(money(sp))}" placeholder="9,500"><span style="font-size:24px;font-weight:700;color:var(--ink)">원</span></div><span class="s">배민·쿠팡이츠·요기요·네이버 가격은 아래에서 따로 정해요.</span></div>
+${storeN ? `<div class="stat ${storeN.net >= 0 ? 'good' : 'bad'}"><span class="l">매장에서 1개 팔면 순 마진</span><span class="v">${SW(storeN.net)}</span><span class="s">재료비만 뺀 남는 돈 ${W(storeN.gross)}${rate != null ? ` (재료비 비율 ${fmtQ(rate, 0)}%)` : ''}</span></div>` : ''}
+${dN ? `<div class="stat ${dN.net >= 0 ? 'good' : 'bad'}"><span class="l">${esc(dCh.short)}에서 ${won(dN.price)}원에 1개 팔면 순 마진</span><span class="v">${SW(dN.net)}</span><span class="s">수수료·배달비·매달 나가는 돈 몫까지 뺀 값</span></div>` : ''}
+</div>
+<div class="row" style="align-items:flex-start">
+<aside class="menu-list" aria-label="내 메뉴"><div class="mut" style="font-size:15px;padding:0 6px">내 메뉴</div>
+${S.menus.map(x => { const p = priceOf(x, 'store'); const r = p ? menuCost(x, t) / p * 100 : null; return `<button type="button" class="ml" data-a="selMenu" data-id="${x.id}" aria-current="${x.id === m.id}"><span>${esc(x.name || '(이름 없음)')}</span>${r != null && r > target ? `<span class="tag tag-red">${fmtQ(r, 0)}%</span>` : ''}</button>`; }).join('')}
+<button type="button" class="btn-add" data-a="addMenu" style="margin-top:6px">+ 메뉴 추가</button></aside>
+<div class="card" style="flex:1 1 640px">
+<div class="titlebar"><div style="flex:1 1 300px"><label class="mut" style="font-size:14px" for="mname">메뉴 이름</label>${`<input id="mname" class="inp" style="font-size:22px;font-weight:700" data-k="menu.name:${m.id}" value="${esc(m.name)}" placeholder="예: 우삽겹 파스타">`}</div><button type="button" class="btn-del" data-a="delMenu" data-id="${m.id}">이 메뉴 지우기</button></div>
+<div class="tw"><table class="t" style="min-width:600px"><thead><tr><th style="width:32%">재료</th><th>쓰는 양</th><th class="r" style="width:110px">재료비</th><th style="width:60px"><span class="sr">빼기</span></th></tr></thead>
+<tbody>${lines || '<tr><td colspan="4" class="mut" style="padding:14px 8px">아래 "+ 재료 넣기"를 눌러 레시피를 만들어요.</td></tr>'}</tbody>
+<tfoot><tr><td colspan="2">합계 재료비</td><td class="r" style="font-size:20px">${W(cost)}</td><td></td></tr></tfoot></table></div>
+<div style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn-line" data-a="addLine" data-id="${m.id}" ${S.ingredients.length ? '' : 'disabled'}>+ 재료 넣기</button><button type="button" class="btn-line" data-a="addFixedLine" data-id="${m.id}">+ 고정 금액 넣기 (소금·후추처럼)</button></div>
+${S.ingredients.length ? '' : '<div class="hint">먼저 "1 재료" 화면에서 재료를 추가해요.</div>'}
+${warns.length ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>${warns.map(esc).join(' ')}</span></div>` : ''}
+<div style="background:var(--bg);border-radius:12px;padding:14px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+<span style="font-weight:700">재료비 비율을</span><div class="unit"><input class="inp sm num" style="width:80px" inputmode="decimal" data-k="set.target" value="${esc(target)}" aria-label="목표 재료비 비율"><span>%</span></div><span style="font-weight:700">로 맞추고 싶다면?</span>
+<span style="flex:1 1 100%">${cost ? `판매가를 <b>${W(ceilTo(cost / (target / 100), 10))}</b>으로 하면 재료비 비율이 ${target}%가 돼요. 재료값이 오르면 이 숫자가 바로 바뀌어요.` : '레시피를 넣으면 알맞은 판매가를 알려드려요.'} 목표를 넘는 메뉴는 왼쪽 목록에 빨간 표시가 붙어요.</span>
+</div>
+</div></div>
+${feeCard()}
+<div class="card">
+<div class="h2">판매처마다 메뉴 가격을 따로 정하고, 진짜 얼마 남는지 봐요 (순 마진)</div>
+<div class="mut" style="font-size:16px">배달앱은 보통 매장보다 가격을 올려 받으니까, 판매처마다 파는 가격을 직접 적어요. 재료비, 수수료와 배달비, 매달 나가는 돈의 몫까지 다 뺀 값이에요. 가격을 비우면 그 판매처에서는 안 파는 메뉴로 봐요.</div>
+${S.menus.map(x => marginTable(x)).join('')}
+<div class="row">
+${storeN ? `<div class="card" style="flex:1 1 320px;background:var(--bg);border:0"><div class="h3">${esc(josa(m.name, "을", "를"))} 매장에서 ${won(storeN.price)}원에 팔면</div><div class="calc"><div><span>파는 가격</span><span>${W(storeN.price)}</span></div><div><span>재료비</span><span>${minus(storeN.cost)}</span></div><div><span>매달 나가는 돈 몫</span><span>${minus(storeN.share)}</span></div><div class="tot"><span>순 마진</span><span class="${storeN.net >= 0 ? 'pos' : 'neg'}">${SW(storeN.net)}</span></div></div></div>` : ''}
+${dN ? `<div class="card" style="flex:1 1 320px;background:var(--bg);border:0"><div class="h3">${esc(josa(m.name, "을", "를"))} ${esc(dCh.short)}에서 ${won(dN.price)}원에 팔면</div><div class="calc"><div><span>파는 가격</span><span>${W(dN.price)}</span></div><div><span>재료비</span><span>${minus(dN.cost)}</span></div><div><span>앱 수수료와 결제 수수료${dCh.vat ? ' (부가세 포함)' : ''}</span><span>${minus(dN.pctFee)}</span></div><div><span>배달비${dCh.vat ? ' (부가세 포함)' : ''}</span><span>${minus(dN.delFee)}</span></div><div><span>매달 나가는 돈 몫</span><span>${minus(dN.share)}</span></div><div class="tot"><span>순 마진</span><span class="${dN.net >= 0 ? 'pos' : 'neg'}">${SW(dN.net)}</span></div></div></div>` : ''}
+</div>
+<div class="notes">
+<span>매달 나가는 돈 몫 ${W(share)} = 하루 몫 ${W(ds)} ÷ 하루에 파는 개수 ${fmtQ(adq.v, 0)}개${adq.auto ? ` (최근 30일 중 판매한 ${adq.n}일 평균)` : ''}예요. 메뉴 가격과 상관없이 한 개마다 똑같이 나눠서 빼요.</span>
+${adq.auto ? '' : `<span>아직 판매 기록이 없어서 하루에 파는 개수를 임시로 <input class="inp sm num" style="width:80px;display:inline-block;min-height:36px;padding:4px 8px" inputmode="decimal" data-k="set.fallbackQty" value="${esc(S.settings.fallbackQty)}" aria-label="임시 하루 판매 개수">개로 계산해요. 오늘 기록을 적으면 자동으로 바뀌어요.</span>`}
+<span>주문 한 건에 메뉴가 1개일 때 기준이에요. 메뉴 화면의 "남는 돈"은 재료비만 뺀 값이고, "순 마진"은 수수료·배달비와 매달 나가는 돈 몫까지 뺀 값이에요. 이번 달 남는 돈에서는 매달 나가는 돈을 가게 전체에서 한 번만 빼요.</span>
+</div>
+</div>`;
+}
+const minus = n => '− ' + W(n);
+function marginTable(m) {
+  const cost = menuCost(m, today());
+  return `<div class="mhead"><b>${esc(m.name || '(이름 없음)')}</b><span class="mut">재료비 ${W(cost)}</span></div>
+<div class="tw"><table class="t" style="min-width:640px"><thead><tr><th>어디서 팔아요</th><th style="width:200px">파는 가격</th><th class="r">수수료·배달비</th><th class="r">순 마진</th></tr></thead><tbody>
+${S.channels.map(ch => { const n = menuNet(m, ch); return `<tr><td>${esc(ch.name)}</td><td><div class="unit">${IN('menu.price:' + m.id + ':' + ch.id, money(m.prices?.[ch.id]), '안 팔아요', m.name + ' ' + ch.short + ' 파는 가격', 'sm')}<span>원</span></div></td>
+<td class="r">${n ? (ch.kind === 'store' ? '없음' : W(n.fee)) : '-'}</td>
+<td class="r ${n && n.net <= 0 ? 'cell-bad' : ''}">${n ? `<div style="font-weight:900;font-size:18px" class="${n.net > 0 ? 'pos' : 'neg'}">${SW(n.net)}</div><div class="hint">재료비만 뺀 ${W(n.gross)}</div>` : '<span class="mut">안 팔아요</span>'}</td></tr>`; }).join('')}
+</tbody></table></div>`;
+}
+function feeCard() {
+  return `<div class="card" id="fees">
+<div class="titlebar"><div class="col"><div class="h2">판매처별 수수료</div><div class="mut" style="font-size:15px">조사한 값이 미리 들어 있어요. 내 정산서와 다르면 직접 고치세요. 여기서 고치면 메뉴별 순 마진과 오늘 기록이 같이 바뀌어요.</div></div><button type="button" class="btn-add" data-a="addCh">+ 판매처 추가 (수수료 직접 입력)</button></div>
+<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>직접 고치지 않은 수수료는 한 달에 한 번 확인해서 자동으로 새 값으로 바뀌어요. 직접 고친 값(주황 글씨)은 그대로 두고, 새 값이 나오면 알려드려요.</span></div>
+<div class="tw"><table class="t" style="min-width:820px"><thead><tr><th>판매처</th><th>앱 수수료</th><th>결제 수수료</th><th>주문 1건 배달비</th><th>부가세 10%</th><th><span class="sr">지우기</span></th></tr></thead><tbody>
+${S.channels.map(ch => {
+    if (ch.kind === 'store') return `<tr><td><b>매장</b></td><td colspan="3" class="mut">수수료 없음 (카드 수수료는 오늘 쓴 돈에 적어요)</td><td></td><td></td></tr>`;
+    const f = (fld, unit) => `<div class="unit">${IN(`ch.${fld}:${ch.id}`, fld === 'fee' ? money(ch[fld]) : ch[fld], '0', ch.short + ' ' + FLD[fld], 'sm' + (ch.edited?.[fld] ? ' mine' : ''))}<span>${unit}</span></div>`;
+    return `<tr><td>${ch.custom || ch.kind === 'own' ? IT('ch.name:' + ch.id, ch.name, '예: 전화 주문', '판매처 이름', 'sm') : `<b>${esc(ch.name)}</b>`}</td><td style="width:150px">${f('app', '%')}</td><td style="width:150px">${f('pay', '%')}</td><td style="width:180px">${f('fee', '원')}</td>
+<td><label class="chk"><input type="checkbox" data-k="ch.vat:${ch.id}" ${ch.vat ? 'checked' : ''}>더해요</label></td><td>${ch.custom ? `<button type="button" class="btn-del" data-a="delCh" data-id="${ch.id}">지우기</button>` : ''}</td></tr>`;
+  }).join('')}
+<tr><td><b>계좌이체</b></td><td colspan="3" class="mut">수수료 없음, 들어온 돈이 그대로 매출이 돼요 (오늘 기록에서 적어요)</td><td></td><td></td></tr>
+</tbody></table></div>
+<div class="notes"><span>배민·쿠팡이츠 6.8%, 요기요 9.7%, 카드 3%, 배달비 3,000원은 2026년 10월 조사 기본값이고 매출 구간과 계약에 따라 달라요(배민·쿠팡이츠 2.0~7.8%, 요기요 4.7~9.7%). 정산서를 보고 한 번 맞춰 주세요.</span><span>네이버 포장의 결제 수수료 3%는 확인된 값이 아니라 가정이에요.</span><span>가게 배달은 대행료나 직원 몫을 "주문 1건 배달비"에 적어 두면 메뉴별 비교에 쓰고, 그날 실제로 든 돈은 오늘 기록에서 직접 적어요.</span></div>
+</div>`;
+}
+
+/* ============ 화면 3: 오늘 기록 ============ */
+function viewToday() {
+  const D = ui.date, t = today(), day = S.days[D], c = dayCalc(D);
+  const good = c.net >= 0;
+  const bd = businessDays(monthOf(D)), mf = monthFixed(monthOf(D));
+  const chs = S.channels;
+  const salesRows = S.menus.map(m => {
+    const row = day?.sales?.[m.id] || {};
+    let sum = 0; for (const ch of chs) sum += (num(row[ch.id]) || 0) * (priceOf(m, ch.id) ?? priceOf(m, 'store') ?? 0);
+    return `<tr><td><b>${esc(m.name || '(이름 없음)')}</b><div class="hint">${priceOf(m, 'store') != null ? W(priceOf(m, 'store')) : '가격 없음'}</div></td>${chs.map(ch => `<td>${IN(`sale:${m.id}:${ch.id}`, row[ch.id] ? row[ch.id] : '', '0', `${m.name} ${ch.short} 판매 수`, 'sm')}</td>`).join('')}<td class="r" style="font-weight:700">${W(sum)}</td></tr>`;
+  }).join('');
+  const items = stockItems().sort((a, b) => lvOrder[stockStatus(a).lv] - lvOrder[stockStatus(b).lv]);
+  const past = []; for (let i = 1; i <= 7; i++) past.push(addDays(D, -i));
+  return `<div class="titlebar"><h1 class="h1">오늘 판 것과 쓴 돈을 적어요</h1>
+<div class="nav"><button type="button" class="navb" data-a="day" data-v="-1" aria-label="어제">‹</button><div class="navl">${dLabel(D)}</div><button type="button" class="navb" data-a="day" data-v="1" aria-label="내일">›</button>${D !== t ? `<button type="button" class="btn-line" data-a="dayToday">오늘로</button>` : ''}</div></div>
+<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center"><label class="chk"><input type="checkbox" data-k="day.closed" ${c.closed ? 'checked' : ''}>이날은 쉬는 날이에요 (매달 나가는 돈의 하루 몫을 빼지 않아요)</label>${D > t ? '<span class="tag">아직 오지 않은 날이에요</span>' : ''}</div>
+<div class="hero ${good ? 'good' : 'bad'}">
+<div class="hl"><span class="hlab">${D === t ? '오늘' : '이날'} 순 남는 돈</span><span class="hv">${SW(c.net)}</span><span class="hs">재료비, 쓴 돈, 배달·포장 수수료, 리뷰 이벤트로 나간 돈, 매달 나가는 돈의 하루 몫까지 다 뺀 금액이에요. 남으면 초록, 모자라면 빨강으로 보여요.${good ? '' : ' 마이너스가 나와도 이상한 게 아니에요. 쉬는 날 다음 날처럼 장사가 적은 날엔 그럴 수 있어요.'}</span></div>
+<div class="hbox">
+<div><span>매출 (매장 ${won(c.store)} + 배달·포장 ${won(c.takeout)} + 계좌이체 ${won(c.transfers)})</span><b>${W(c.revenue)}</b></div>
+<div class="m"><span>재료비 (자동)</span><span>${minus(c.ing)}</span></div>
+<div class="m"><span>쓴 돈</span><span>${minus(c.expenses)}</span></div>
+<div class="m"><span>배달·포장 수수료와 배달비 (자동)</span><span>${minus(c.fees)}</span></div>
+<div style="color:var(--r)"><span>리뷰 이벤트로 나간 돈</span><span>${minus(c.review)}</span></div>
+<div class="m"><span>매달 나가는 돈의 하루 몫</span><span>${minus(c.share)}</span></div>
+<div class="foot">${c.closed ? '쉬는 날이라 하루 몫을 빼지 않았어요.' : `하루 몫 = 매달 나가는 돈 ${W(mf)} ÷ 쉬는 날 뺀 영업일 ${bd}일. 고지서가 아직 없는 공과금은 지난달 금액으로 잡아요.`}</div>
+</div></div>
+<div class="row">
+<div class="stat"><span class="l">${D === t ? '오늘' : '이날'} 매출</span><span class="v">${W(c.revenue)}</span><span class="s">매장 ${W(c.store)} · 배달·포장 ${W(c.takeout)} · 계좌이체 ${W(c.transfers)}</span></div>
+<div class="stat"><span class="l">${D === t ? '오늘' : '이날'} 쓴 돈 (재료비 빼고)</span><span class="v">${W(c.expenses)}</span><span class="s">수수료·배달비 ${W(c.fees)}는 따로 자동 계산해요</span></div>
+</div>
+<div class="card">
+<div class="h2">팔린 메뉴</div><div class="mut" style="font-size:15px">어디서 팔렸는지 나눠서 적어요. 배달앱, 네이버 포장, 가게 배달은 수수료가 달라서 따로 계산해요.</div>
+${S.menus.length ? `<div class="tw"><table class="t" style="min-width:${300 + chs.length * 100}px"><thead><tr><th>메뉴</th>${chs.map(ch => `<th>${esc(ch.short)}</th>`).join('')}<th class="r">합계</th></tr></thead><tbody>${salesRows}</tbody></table></div>` : '<div class="mut">메뉴가 없어요. "2 메뉴" 화면에서 추가해요.</div>'}
+<div class="okbox">재료비는 팔린 수만큼 자동으로 빠져요. 장보기 영수증은 따로 안 적어도 돼요 (재구매 버튼으로 기록해요).</div>
+</div>
+<div class="row" style="align-items:flex-start">
+<div class="card" style="flex:1 1 400px">
+<div class="h2">쓴 돈</div><div class="mut" style="font-size:15px">재료비는 빼고 적어요. 매장 카드 수수료, 소모품, 수리비 등.</div>
+${(day?.expenses || []).map(e => `<div style="display:flex;gap:8px;align-items:center">${IT('exp.name:' + e.id, e.name, '예: 카드 수수료', '쓴 곳')}<div class="unit" style="flex:0 0 170px">${IN('exp.amount:' + e.id, money(e.amount), '예: 5,200', '쓴 돈')}<span>원</span></div><button type="button" class="btn-del" data-a="delExp" data-id="${e.id}">지우기</button></div>`).join('')}
+<div><button type="button" class="btn-line" data-a="addExp">+ 쓴 돈 추가</button></div>
+<div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--line);padding-top:10px"><span>합계</span><span>${W(c.expenses)}</span></div>
+</div>
+<div class="card" style="flex:1 1 560px">
+<div class="titlebar"><div class="h2">리뷰 이벤트로 나간 돈</div><button type="button" class="btn-line" data-a="addRev">+ 이벤트 추가</button></div>
+<div class="mut" style="font-size:15px">리뷰 쓰면 서비스로 준 음식이나 깎아 준 쿠폰은 팔린 게 아니라서 따로 적어요. 사장님이 부담하는 돈이라 순 남는 돈에서 빠져요.</div>
+${(day?.reviews || []).length ? `<div class="tw"><table class="t" style="min-width:600px"><thead><tr><th>뭘 줬나요</th><th style="width:150px">서비스 메뉴</th><th style="width:80px">몇 개</th><th style="width:140px">1개당 나가는 돈</th><th class="r">나간 돈</th><th></th></tr></thead><tbody>
+${day.reviews.map(r => { const m = r.menuId && findMenu(r.menuId); const per = m ? menuCost(m, D) : num(r.perCost) || 0; return `<tr><td>${IT('rev.name:' + r.id, r.name, '예: 리뷰 약속 타코 서비스', '리뷰 이벤트로 준 것', 'sm')}</td>
+<td><select class="inp sm" data-k="rev.menu:${r.id}" aria-label="서비스 메뉴"><option value="">쿠폰·할인 (직접 입력)</option>${S.menus.map(x => `<option value="${x.id}" ${x.id === r.menuId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></td>
+<td>${IN('rev.count:' + r.id, r.count, '1', '개수', 'sm')}</td>
+<td>${m ? `<div style="font-weight:700;text-align:right;padding:8px 4px">${W(per)}</div><div class="hint" style="text-align:right">메뉴 재료비 자동</div>` : `${IN('rev.per:' + r.id, money(r.perCost), '예: 3,000', '1개당 나가는 돈', 'sm')}<div class="hint" style="text-align:right">직접 입력</div>`}</td>
+<td class="r" style="color:var(--r);font-weight:700">${minus((num(r.count) || 0) * per)}</td><td><button type="button" class="btn-del" data-a="delRev" data-id="${r.id}">지우기</button></td></tr>`; }).join('')}
+</tbody><tfoot><tr><td colspan="4">리뷰 이벤트로 나간 돈</td><td class="r" style="color:var(--r)">${minus(c.review)}</td><td></td></tr></tfoot></table></div>` : '<div class="mut">오늘은 없어요.</div>'}
+<div class="notes"><span>서비스로 준 메뉴는 메뉴를 고르면 재료비가 자동으로 들어가요. 할인 쿠폰처럼 재료가 없는 건 나간 돈을 직접 적어요.</span><span>서비스로 준 음식은 판 게 아니라서 위 재료비(판매 기준)와 겹쳐서 빠지지 않아요. 줄어든 재료는 재고에서도 같이 줄어요.</span></div>
+</div></div>
+<div class="card">
+<div class="h2">어디서 얼마 팔았고, 실제로 얼마 받나요</div>
+<div class="tw"><table class="t" style="min-width:820px"><thead><tr><th>판 곳</th><th class="r">매출</th><th style="width:130px">주문 몇 건?</th><th>수수료와 배달비</th><th class="r">받는 돈</th></tr></thead><tbody>
+${chs.map(ch => { const p = c.per[ch.id];
+    if (ch.kind === 'store') return `<tr><td><b>매장</b></td><td class="r">${W(p.sales)}</td><td class="mut">-</td><td class="mut">카드 수수료는 쓴 돈에 적어요</td><td class="r" style="font-weight:700">${W(p.received)}</td></tr>`;
+    const ordVal = day?.orders?.[ch.id];
+    return `<tr><td><b>${esc(ch.name)}</b></td><td class="r">${W(p.sales)}</td><td>${IN('ord:' + ch.id, ordVal ?? '', String(chQty(day, ch.id)), ch.short + ' 주문 건수', 'sm')}${ordVal == null || ordVal === '' ? '<div class="hint">비우면 메뉴 1개 = 1건</div>' : ''}</td>
+<td>${ch.kind === 'own' ? `<div class="unit"><span>직접 입력 −</span>${IN('day.ownCost', money(day?.ownCost), won((p.orders || 0) * (num(ch.fee) || 0)), '가게 배달에 든 돈', 'sm')}<span>원</span></div>${pctOf(ch) ? `<div class="hint">결제 수수료 ${fmtQ(pctOf(ch) * 100, 2)}% 별도</div>` : ''}` : `${minus(p.fee)}${ch.kind === 'pickup' ? ' <span class="mut">(결제 수수료만)</span>' : ''}`}</td>
+<td class="r" style="font-weight:700">${W(p.received)}</td></tr>`; }).join('')}
+${(day?.transfers || []).map((tr, i) => `<tr><td><b>계좌이체</b><div class="hint">들어온 돈을 직접 적어요</div></td><td><div class="unit">${IN('tr.amount:' + tr.id, money(tr.amount), '예: 15,000', '계좌이체로 들어온 돈', 'sm')}<span>원</span></div></td><td colspan="2">${IT('tr.memo:' + tr.id, tr.memo, '누가, 왜 보냈는지 (선택)', '계좌이체 메모', 'sm')}</td><td class="r" style="font-weight:700">${W(num(tr.amount) || 0)} <button type="button" class="btn-del" data-a="delTr" data-id="${tr.id}">지우기</button></td></tr>`).join('')}
+<tr><td colspan="5"><button type="button" class="btn-line" data-a="addTr">+ 계좌이체로 들어온 돈 적기</button></td></tr>
+</tbody></table></div>
+<div class="notes"><span>배달비는 주문 한 건마다 나가요. 한 건에 메뉴를 여러 개 시킬수록 남는 돈이 늘어요.</span><span>계좌이체는 메뉴 판매와 별개로 들어온 돈(단체 주문 선입금, 예약금 등)을 금액 그대로 적어요. 수수료 없이 매출에 더해져요. 메뉴 판매는 위 표에 따로 적어요.</span><span>수수료와 배달비에는 부가세 10%가 붙어요. 수수료를 고치려면 <button type="button" class="linkbtn" data-a="gotoFees">메뉴 화면의 판매처별 수수료</button>에서 고쳐요.</span></div>
+</div>
+<div class="card">
+<div class="h2">쓴 재료와 포장재, 남은 재고</div>
+<div class="mut" style="font-size:15px">쓴 양은 팔린 수로 자동으로 채워져 있어요. 실제로 다르게 썼으면 그 칸을 고쳐 주세요. 마감하고 남은 양을 세어 적으면 재고가 정확해져요. 포장재는 "어디에 써요?"에 적어 둔 대로 빠져요.</div>
+<div class="legend">${stChip('red')}<span>하루도 못 버텨요</span>${stChip('yellow')}<span>곧 사야 해요</span>${stChip('green')}<span>넉넉해요</span>${stChip('gray')}<span>계산 중</span></div>
+<div class="tw"><table class="t" style="min-width:780px"><thead><tr><th>이름</th><th style="width:190px">쓴 양</th><th style="width:190px">마감 후 남은 양</th><th>버틸 날수</th><th>상태</th></tr></thead><tbody>
+${items.map(it => { const s = stockStatus(it), st = stockAt(it, D), man = day?.used?.[it.o.id], au = autoUsage(it, D), pi = s.pi; const dd = s.du ? st / s.du : null;
+    return `<tr><td><b>${esc(nameOf(it))}</b></td><td>${IT('used:' + it.o.id, man != null ? fmtS(man) + ' ' + pi.unit : '', fmtS(au) + ' ' + pi.unit, nameOf(it) + ' 쓴 양', 'sm num')}<div class="hint">${man != null ? `<span class="mine">직접 고침</span> · 자동 ${fmtS(au)} ${pi.unit} <button type="button" class="linkbtn" data-a="clearUsed" data-id="${it.o.id}">자동으로</button>` : '자동'}</div></td>
+<td>${IT('st.now:' + it.o.id + ':' + D, packTxt(it, st), '0', nameOf(it) + ' 남은 양', 'sm num')}<div class="hint">${baseTxt(it, st)}</div></td><td>${dd == null ? '<span class="mut">계산 중</span>' : fmtQ(dd, 1) + '일'}</td><td>${stChip(s.lv)}</td></tr>`; }).join('') || '<tr><td colspan="5" class="mut">재료나 포장재가 없어요.</td></tr>'}
+</tbody></table></div></div>
+<div class="card">
+<div class="h2">지난 며칠</div>
+<div class="tw"><table class="t" style="min-width:600px"><thead><tr><th>날짜</th><th class="r">매출</th><th class="r">쓴 돈</th><th class="r">순 남는 돈</th></tr></thead><tbody>
+${past.map(d => { const x = dayCalc(d); return `<tr><td><button type="button" class="linkbtn" data-a="gotoDay" data-v="${d}">${dLabel(d)}</button>${x.closed ? ' <span class="tag">쉬는 날</span>' : ''}</td><td class="r">${x.has ? W(x.revenue) : '<span class="mut">기록 없음</span>'}</td><td class="r">${x.has ? W(x.expenses) : ''}</td><td class="r" style="font-weight:700"><span class="${x.net >= 0 ? 'pos' : 'neg'}">${SW(x.net)}</span></td></tr>`; }).join('')}
+</tbody></table></div>
+<div class="mut" style="font-size:14px">적자인 날은 빨강, 남은 날은 초록이에요. 하루 순 남는 돈을 한 달 동안 모두 더하면 이번 달 남는 돈과 같아요.</div>
+</div>`;
+}
+
+/* ============ 화면 4: 이번 달 ============ */
+function viewMonth() {
+  const M = ui.month, r = monthCalc(M), t = today(), cur = M === monthOf(t);
+  const good = r.netShown >= 0;
+  const max = Math.max(r.revenue, r.breakEven, 1);
+  const days = cur ? Number(t.slice(8)) : daysInMonth(M);
+  const groups = { '임대료': 0, '인건비': 0, '공과금': 0, '기타 매달 나가는 돈': 0 };
+  const fr = r.fixed ? r.fixedShown / r.fixed : 0;
+  for (const f of S.fixedCosts) { const a = fixedAmount(f, M) * fr; const n = f.name || ''; if (/임대|월세|관리비/.test(n)) groups['임대료'] += a; else if (/인건|4대|급여|알바|보험/.test(n)) groups['인건비'] += a; else if (/전기|수도|가스|공과/.test(n)) groups['공과금'] += a; else groups['기타 매달 나가는 돈'] += a; }
+  const segs = [['재료비', r.ing, '#C2410C'], ['임대료', groups['임대료'], '#1E3A5F'], ['인건비', groups['인건비'], '#3F7CAC'], ['공과금', groups['공과금'], '#A9C4DD'], ['기타 매달 나가는 돈', groups['기타 매달 나가는 돈'], '#6B7280'], ['수수료·배달비', r.fees, '#7B4E8E'], ['쓴 돈', r.expenses, '#B8B0A2'], ['리뷰 이벤트', r.review, '#B45309']];
+  if (r.netShown > 0) segs.push(['남는 돈', r.netShown, '#137A4B']);
+  const tot = Math.max(r.revenue, segs.reduce((a, s) => a + s[1], 0), 1);
+  const rank = S.menus.map(m => ({ m, e: r.menus[m.id] || { qty: 0, sales: 0, cost: 0 } })).sort((a, b) => b.e.qty - a.e.qty);
+  const computed = r.ing + r.reviewIng;
+  const diff = computed ? (r.bought - computed) / computed * 100 : null;
+  const bd = businessDays(M);
+  return `<div class="titlebar"><h1 class="h1">이번 달에 얼마 남았을까요?</h1>
+<div class="nav"><button type="button" class="navb" data-a="month" data-v="-1" aria-label="지난달">‹</button><div class="navl">${mLabel(M)}</div><button type="button" class="navb" data-a="month" data-v="1" aria-label="다음 달">›</button></div></div>
+<div class="hero ${good ? 'good' : 'bad'}" style="flex-direction:column;align-items:stretch;gap:22px">
+<div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px">
+<div class="col" style="gap:4px"><span class="hlab">이번 달 남는 돈</span><span class="hv" style="font-size:68px">${MW(r.netShown)}</span>${cur ? `<span class="hs">오늘까지 기준이에요</span>` : ''}</div>
+<div class="col" style="gap:4px;text-align:right"><span class="hlab">${r.breakEven ? (r.revenue >= r.breakEven ? `본전 매출 ${W(r.breakEven)}을 넘었어요` : `본전 매출 ${W(r.breakEven)}까지 ${W(r.breakEven - r.revenue)} 남았어요`) : '매달 나가는 돈을 적으면 본전 매출을 알려드려요'}</span><span class="hs">하루 평균 매출 ${W(r.daysWithSales ? r.revenue / r.daysWithSales : 0)}${cur ? ` · 오늘까지 ${days}일째` : ''}</span></div>
+</div>
+${r.breakEven ? `<div class="col" style="gap:8px"><div class="bar"><div class="fill" style="width:${Math.min(100, r.revenue / max * 100)}%"></div><div class="mark" style="left:${r.breakEven / max * 100}%"></div></div>
+<div class="barlbl"><span style="left:0">0원</span><span style="left:${Math.min(80, Math.max(20, r.breakEven / max * 100))}%;transform:translateX(-50%);font-weight:700;color:var(--ink)">본전 ${W(r.breakEven)}</span><span style="right:0">지금 ${W(r.revenue)}</span></div></div>` : ''}
+<div class="hs">남는 돈 = 매출 − 재료비 − 수수료·배달비 − 쓴 돈 − 리뷰 이벤트 − 매달 나가는 돈. 본전 매출 = 매달 나가는 돈 ÷ (1 − 평균 재료비 비율 ${fmtQ(r.avgRate * 100, 0)}%).${cur ? ` 아직 달이 끝나지 않아서 매달 나가는 돈은 오늘까지 영업일 몫(${W(r.shareSoFar)})만 뺐어요. 남은 날 몫 ${W(r.fixed - r.shareSoFar)}은 앞으로 벌어서 메워야 해요. 한 달치를 다 빼면 지금은 ${MW(r.net)}이에요.` : ''}</div>
+</div>
+<div class="row">
+<div class="stat"><span class="l">이번 달 매출</span><span class="v">${W(r.revenue)}</span></div>
+<div class="stat"><span class="l">재료비 (매출의 ${r.revenue ? fmtQ(r.ing / r.revenue * 100, 0) : 0}%)</span><span class="v">${W(r.ing)}</span></div>
+<div class="stat"><span class="l">매달 나가는 돈${cur ? ' (오늘까지 몫)' : ''}</span><span class="v">${W(r.fixedShown)}</span>${cur ? `<span class="s">한 달치 ${W(r.fixed)}</span>` : ''}</div>
+<div class="stat"><span class="l">수수료·배달비 + 쓴 돈</span><span class="v">${W(r.fees + r.expenses)}</span><span class="s">수수료·배달비 ${W(r.fees)} · 쓴 돈 ${W(r.expenses)}</span></div>
+<div class="stat"><span class="l">리뷰 이벤트로 나간 돈</span><span class="v">${W(r.review)}</span><span class="s">서비스로 준 음식과 쿠폰. 남는 돈에서 이미 뺐어요</span></div>
+<div class="stat"><span class="l">계좌이체로 받은 돈</span><span class="v">${W(r.transfers)}</span><span class="s">수수료 없이 받은 돈. 매출에 들어 있어요</span></div>
+</div>
+<div class="card">
+<div class="h2">번 돈이 어디로 갔을까요?</div>
+<div class="stack" role="img" aria-label="${segs.map(s => `${s[0]} ${won(s[1])}원`).join(', ')}">${segs.filter(s => s[1] > 0).map(s => `<div style="width:${s[1] / tot * 100}%;background:${s[2]}" title="${s[0]} ${W(s[1])}"></div>`).join('')}</div>
+<div class="lg">${segs.filter(s => s[1] > 0).map(s => `<div><i style="background:${s[2]}"></i>${s[0]} <b>${won(s[1])}</b></div>`).join('')}</div>
+${r.netShown < 0 ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>나간 돈이 매출보다 ${W(-r.netShown)} 많아요.</span></div>` : ''}${cur ? '<div class="mut" style="font-size:14px">매달 나가는 돈은 오늘까지 몫으로 나눠서 보여줘요.</div>' : ''}
+</div>
+<div class="row" style="align-items:flex-start">
+<div class="card" style="flex:1 1 480px"><div class="h2">메뉴별 판매 순위</div>
+<div class="tw"><table class="t" style="min-width:440px"><thead><tr><th>순위</th><th>메뉴</th><th class="r">판 개수</th><th class="r">매출</th><th class="r">재료비 비율</th></tr></thead><tbody>
+${rank.map((x, i) => `<tr><td>${i + 1}</td><td><b>${esc(x.m.name)}</b></td><td class="r">${won(x.e.qty)}개</td><td class="r">${W(x.e.sales)}</td><td class="r">${x.e.sales ? fmtQ(x.e.cost / x.e.sales * 100, 0) + '%' : '-'}</td></tr>`).join('') || '<tr><td colspan="5" class="mut">메뉴가 없어요.</td></tr>'}
+</tbody></table></div></div>
+<div class="card" style="flex:1 1 380px"><div class="h2">월말 점검</div>
+<div class="calc"><div><span>판 만큼 계산한 재료비</span><b>${W(computed)}</b></div><div><span>실제 장 본 돈 (재구매 기록)</span><b>${W(r.bought)}</b></div><div class="tot"><span>차이</span><span>${diff == null ? '-' : (diff >= 0 ? '+' : '−') + fmtQ(Math.abs(diff), 0) + '%'}</span></div></div>
+<div class="mut" style="font-size:15px">${diff == null ? '판매 기록이 쌓이면 비교해요.' : diff > 15 ? '장 본 돈이 꽤 많아요. 버린 재료가 있거나, 재고로 쌓아 둔 재료가 있을 수 있어요.' : diff < -15 ? '장 본 돈이 적어요. 장 본 날 "재구매"를 안 누른 재료가 있는지 확인해 보세요.' : '거의 맞아요. 남은 양은 눈대중이라 조금 차이는 날 수 있어요.'}</div></div>
+</div>
+<div class="card">
+<div class="h2">매달 나가는 돈</div>
+<div class="mut" style="font-size:16px">한 번 적어두면 다음 달에도 같은 금액이 들어가요. 바뀌는 달만 고치면 돼요 (지금 보고 있는 ${mLabel(M)}부터 바뀌어요). 부가세·종합소득세처럼 몰아서 내는 돈은 "1년치"에 체크하고 1년 금액을 적으면 12로 나눠서 넣어요.</div>
+<div class="tw"><table class="t plain" style="min-width:640px"><tbody>
+${S.fixedCosts.map(f => { const raw = fixedRaw(f, M); return `<tr><td>${IT('fx.name:' + f.id, f.name, '예: 임대료', '항목 이름')}</td><td style="width:220px"><div class="unit">${IN('fx.amount:' + f.id, raw == null ? '' : money(raw), '예: 1,500,000', '금액')}<span>원</span></div></td><td style="width:280px"><label class="chk"><input type="checkbox" data-k="fx.annual:${f.id}" ${f.annual ? 'checked' : ''}>1년치${f.annual ? ` <span class="mut">→ 한 달 ${W(fixedAmount(f, M))}</span>` : ''}</label></td><td style="width:70px"><button type="button" class="btn-del" data-a="delFx" data-id="${f.id}">지우기</button></td></tr>`; }).join('')}
+</tbody></table></div>
+<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px"><button type="button" class="btn-line" data-a="addFx">+ 항목 추가</button><div style="font-size:18px">합계 <b style="font-size:24px">${W(r.fixed)}</b></div></div>
+<div style="background:var(--bg);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px"><b>쉬는 요일</b><div style="display:flex;flex-wrap:wrap;gap:4px 16px">${WD.map((w, i) => `<label class="chk"><input type="checkbox" data-k="set.closed:${i}" ${(S.settings.closedWeekdays || []).includes(i) ? 'checked' : ''}>${w}요일</label>`).join('')}</div>
+<span class="mut" style="font-size:15px">${mLabel(M)} 영업일 ${bd}일 · 하루 몫 ${W(dailyShare(M))}. 특별히 쉰 날은 오늘 기록 화면에서 "쉬는 날"에 체크해요.</span></div>
+</div>
+<div class="card">
+<div class="h2">장부 저장과 백업</div>
+${fileState === 'ok' ? `<div class="okbox"><b>장부가 이 파일에 자동으로 저장되고 있어요:</b> ${esc(fileHandle?.name || '모두의장부.json')} ${ui.lastFileSave ? '· 방금 저장됨' : ''}. 브라우저 데이터를 지워도 이 파일로 복구돼요.</div>` : fileState === 'lost' ? `<div class="warnbox"><span class="ic">!</span><span>저장 파일과 연결이 끊겼어요. 화면 맨 위 "다시 연결하기"를 눌러 주세요.</span></div>` : `<div class="warnbox"><span class="ic">!</span><span>지금은 이 브라우저 안에만 저장돼요. "저장 위치 고르기"로 PC 폴더에 파일을 만들어 두면 더 안전해요.${fsSupported ? '' : ' (이 브라우저에서는 파일 자동 저장을 쓸 수 없어요. 크롬이나 엣지에서 열어 주세요.)'}</span></div>`}
+<div style="display:flex;flex-wrap:wrap;gap:10px">
+<button type="button" class="btn-dark" data-a="pickFile">저장 위치 고르기·바꾸기</button>
+<button type="button" class="btn-line" data-a="openFile">저장해 둔 장부 파일 열기</button>
+<button type="button" class="btn-line" data-a="exportJson">백업 파일 받기</button>
+<button type="button" class="btn-line" data-a="importJson">백업 불러오기</button>
+<button type="button" class="btn-line" data-a="exportCsv">${mLabel(M)} 엑셀(CSV)로 저장</button>
+</div>
+<div class="notes"><span>장부는 사장님 PC에만 저장되고 서버로 올라가지 않아요. 다른 브라우저나 시크릿 창에서 열면 빈 장부가 나와요.</span><span>처음이라 둘러보고 싶으면 <button type="button" class="linkbtn" data-a="demo">예시 장부 넣어 보기</button> (지금 장부를 바꿔요. "되돌리기"로 원래대로 돌릴 수 있어요)</span></div>
+</div>`;
+}
+
+/* ============ 렌더 ============ */
+function render() {
+  const ae = document.activeElement;
+  let fk = null, raw = null, ss = null, se = null;
+  if (ae && app.contains(ae) && ae.dataset && ae.dataset.k) { fk = ae.dataset.k; raw = ae.value; try { ss = ae.selectionStart; se = ae.selectionEnd; } catch {} }
+  const open = [...app.querySelectorAll('details[open][data-keep]')].map(d => d.dataset.keep);
+  app.innerHTML = view();
+  for (const k of open) { const d = app.querySelector(`details[data-keep="${k}"]`); if (d) d.open = true; }
+  if (fk) {
+    const el = app.querySelector(`[data-k="${CSS.escape(fk)}"]`);
+    if (el) { if (el.type !== 'checkbox') el.value = raw; el.focus({ preventScroll: true }); try { if (ss != null) el.setSelectionRange(ss, se); } catch {} }
+  }
+}
+function renderStatus() { const el = document.getElementById('status'); if (el) el.innerHTML = statusHtml(); }
+
+/* ============ 입력 처리 ============ */
+const setNum = v => { const n = num(v); return n == null ? null : n; };
+const setWon = v => { const n = num(v); return n == null ? null : Math.round(n); };
+function setPurchaseQty(item, p, q) {
+  const delta = q - p.qty; p.qty = q;
+  if (!p.addsToStock && p.anchored && item.o.anchor && item.o.anchor.ts === p.ts) item.o.anchor.qty = Math.max(0, item.o.anchor.qty + delta);
+}
+const F = {
+  'ing.name': (id, _, v) => commit(() => { findIng(id).name = v; }, 'in' + id),
+  'ing.buyText': (id, _, v) => commit(() => { const ing = findIng(id); ing.buyText = v; const p = lastPurchase(id); if (!p) return; const q = baseInfo(ing).qty || 0; setPurchaseQty({ type: 'ing', o: ing }, p, q); p.rawUnit = q ? (p.paid || 0) / q : 0; p.leftover = null; }, 'ib' + id),
+  'ing.paid': (id, _, v) => commit(() => { const p = lastPurchase(id); if (!p) return; p.paid = setWon(v) || 0; p.rawUnit = p.qty ? p.paid / p.qty : 0; p.leftover = null; }, 'ip' + id),
+  'ing.yield': (id, _, v) => commit(() => { const n = num(v); findIng(id).yield = n == null ? 100 : Math.min(100, Math.max(1, n)); }, 'iy' + id),
+  'ing.conv': (id, f, v) => commit(() => { const ing = findIng(id); ing.conv = ing.conv || {}; ing.conv[f] = setNum(v); }, 'ic' + id + f),
+  'st.pack': (id, _, v) => commit(() => { findItem(id).o.packText = v; }, 'sp' + id),
+  'st.last': (id, _, v) => { const it = findItem(id), p = lastPurchase(id), q = parseStockInput(it, v); if (!p || q == null) return; commit(() => { setPurchaseQty(it, p, q); if (it.type === 'ing') { p.paid = Math.round((p.rawUnit || 0) * q); it.o.buyText = fmtBase(q, baseUnit(it.o)); } else p.paid = Math.round((num(it.o.price) || 0) * q / packInfo(it).size); }, 'sl' + id); },
+  'st.now': (id, date, v) => { const it = findItem(id), q = parseStockInput(it, v); if (q == null) return; commit(() => { it.o.anchor = { date, ts: Date.now(), qty: q, usageAtAnchor: usage(it, date) }; it.o.anchorAuto = false; }, 'sn' + id + date); },
+  'st.use': (id, _, v) => { const it = findItem(id); commit(() => { it.o.dailyManual = String(v).trim() ? parseUseInput(it, v) : null; }, 'su' + id); },
+  'st.min': (id, _, v) => { const it = findItem(id); commit(() => { const p = parseAmt(v); if (!p) { it.o.minPacks = null; return; } const b = parseStockInput(it, v); it.o.minPacks = b == null ? null : b / packInfo(it).size; }, 'sm' + id); },
+  'sup.name': (id, _, v) => commit(() => { findSup(id).name = v; }, 'sn' + id),
+  'sup.price': (id, _, v) => commit(() => { findSup(id).price = setWon(v); }, 'sx' + id),
+  'sup.mode': (id, _, v) => commit(() => { const s = findSup(id); s.rule = Object.assign({ menuId: 'all', count: 1 }, s.rule, { mode: v }); }),
+  'sup.menu': (id, _, v) => commit(() => { findSup(id).rule.menuId = v; }),
+  'sup.count': (id, _, v) => commit(() => { findSup(id).rule.count = setNum(v); }, 'sc' + id),
+  'menu.name': (id, _, v) => commit(() => { findMenu(id).name = v; }, 'mn' + id),
+  'menu.price': (id, ch, v) => commit(() => { const m = findMenu(id); m.prices = m.prices || {}; m.prices[ch] = setWon(v); }, 'mp' + id + ch),
+  'line.ing': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).ingId = v; }),
+  'line.text': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).text = v; }, 'lt' + lid),
+  'line.label': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).label = v; }, 'll' + lid),
+  'line.won': (mid, lid, v) => commit(() => { findMenu(mid).recipe.find(l => l.id === lid).won = setWon(v); }, 'lw' + lid),
+  'ch.name': (id, _, v) => commit(() => { const c = findCh(id); c.name = v; c.short = v; }, 'cn' + id),
+  'ch.app': (id, _, v) => commit(() => { const c = findCh(id); c.app = setNum(v) ?? 0; c.edited = Object.assign({}, c.edited, { app: true }); }, 'ca' + id),
+  'ch.pay': (id, _, v) => commit(() => { const c = findCh(id); c.pay = setNum(v) ?? 0; c.edited = Object.assign({}, c.edited, { pay: true }); }, 'cp' + id),
+  'ch.fee': (id, _, v) => commit(() => { const c = findCh(id); c.fee = setWon(v) ?? 0; c.edited = Object.assign({}, c.edited, { fee: true }); }, 'cf' + id),
+  'ch.vat': (id, _, v, el) => commit(() => { findCh(id).vat = el.checked; }),
+  'set.target': (_, __, v) => commit(() => { S.settings.targetRate = setNum(v) || 30; }, 'st'),
+  'set.fallbackQty': (_, __, v) => commit(() => { S.settings.fallbackQty = setNum(v); }, 'sfq'),
+  'set.redDays': (_, __, v) => commit(() => { S.settings.redDays = setNum(v) ?? 1; }, 'srd'),
+  'set.yellowDays': (_, __, v) => commit(() => { S.settings.yellowDays = setNum(v) ?? 3; }, 'syd'),
+  'set.closed': (i, _, v, el) => commit(() => { const w = Number(i); const a = new Set(S.settings.closedWeekdays || []); el.checked ? a.add(w) : a.delete(w); S.settings.closedWeekdays = [...a].sort(); }),
+  'day.closed': (_, __, v, el) => commit(() => { const d = dayOf(ui.date, true); const wdClosed = (S.settings.closedWeekdays || []).includes(pdate(ui.date).getDay()); d.closed = el.checked === wdClosed ? undefined : el.checked; if (d.closed === undefined) delete d.closed; }),
+  'sale': (mid, ch, v) => commit(() => { const d = dayOf(ui.date, true); d.sales[mid] = d.sales[mid] || {}; const n = setNum(v); if (n == null) delete d.sales[mid][ch]; else d.sales[mid][ch] = Math.max(0, Math.round(n)); }, 'sa' + ui.date + mid + ch),
+  'ord': (ch, _, v) => commit(() => { const d = dayOf(ui.date, true); d.orders = d.orders || {}; const n = setNum(v); if (n == null) delete d.orders[ch]; else d.orders[ch] = Math.max(0, Math.round(n)); }, 'or' + ui.date + ch),
+  'day.ownCost': (_, __, v) => commit(() => { dayOf(ui.date, true).ownCost = setWon(v); }, 'oc' + ui.date),
+  'exp.name': (id, _, v) => commit(() => { dayOf(ui.date, true).expenses.find(x => x.id === id).name = v; }, 'en' + id),
+  'exp.amount': (id, _, v) => commit(() => { dayOf(ui.date, true).expenses.find(x => x.id === id).amount = setWon(v); }, 'ea' + id),
+  'rev.name': (id, _, v) => commit(() => { dayOf(ui.date, true).reviews.find(x => x.id === id).name = v; }, 'rn' + id),
+  'rev.menu': (id, _, v) => commit(() => { dayOf(ui.date, true).reviews.find(x => x.id === id).menuId = v || null; }),
+  'rev.count': (id, _, v) => commit(() => { dayOf(ui.date, true).reviews.find(x => x.id === id).count = setNum(v); }, 'rc' + id),
+  'rev.per': (id, _, v) => commit(() => { dayOf(ui.date, true).reviews.find(x => x.id === id).perCost = setWon(v); }, 'rp' + id),
+  'tr.amount': (id, _, v) => commit(() => { dayOf(ui.date, true).transfers.find(x => x.id === id).amount = setWon(v); }, 'ta' + id),
+  'tr.memo': (id, _, v) => commit(() => { dayOf(ui.date, true).transfers.find(x => x.id === id).memo = v; }, 'tm' + id),
+  'used': (id, _, v) => { const it = findItem(id); commit(() => { const d = dayOf(ui.date, true); d.used = d.used || {}; if (!String(v).trim()) delete d.used[id]; else { const q = parseUseInput(it, v); if (q != null) d.used[id] = q; } }, 'us' + ui.date + id); },
+  'fx.name': (id, _, v) => commit(() => { S.fixedCosts.find(f => f.id === id).name = v; }, 'fn' + id),
+  'fx.amount': (id, _, v) => commit(() => { const f = S.fixedCosts.find(x => x.id === id); const M = ui.month; const a = setWon(v) ?? 0; const h = f.hist.find(x => x.from === M); if (h) h.amount = a; else { f.hist.push({ from: M, amount: a }); f.hist.sort((x, y) => x.from.localeCompare(y.from)); } }, 'fa' + id + ui.month),
+  'fx.annual': (id, _, v, el) => commit(() => { S.fixedCosts.find(f => f.id === id).annual = el.checked; }),
+};
+function handleField(el) {
+  const k = el.dataset.k; if (!k) return;
+  const [f, a, b] = k.split(':');
+  const fn = F[f]; if (!fn) return;
+  try { fn(a, b, el.value, el); } catch (e) { console.error(e); }
+}
+app.addEventListener('input', e => { const el = e.target; if (el.tagName === 'SELECT' || el.type === 'checkbox') return; handleField(el); });
+app.addEventListener('change', e => { const el = e.target; if (el.tagName === 'SELECT' || el.type === 'checkbox') handleField(el); else if (el.dataset.k) { lastKey = null; render(); } });
+app.addEventListener('focusout', e => { if (e.target.dataset && e.target.dataset.k && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') setTimeout(() => { if (!app.contains(document.activeElement) || !document.activeElement.dataset.k) render(); }, 0); });
+
+/* ============ 버튼 ============ */
+function closePops(except) { document.querySelectorAll('details[name="stock"][open]').forEach(d => { if (d !== except) d.open = false; }); }
+document.addEventListener('click', e => {
+  const open = [...document.querySelectorAll('details[name="stock"][open]')];
+  for (const d of open) if (!d.contains(e.target)) d.open = false;
+  const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
+  const fn = A[b.dataset.a]; if (!fn) return;
+  e.preventDefault(); fn(b.dataset, b);
+});
+document.addEventListener('toggle', e => { const d = e.target; if (d.matches && d.matches('details[name="stock"]') && d.open) closePops(d); }, true);
+const A = {
+  tab: d => { ui.tab = d.id; try { localStorage.setItem('mj-tab', d.id); } catch {} render(); scrollTo(0, 0); },
+  undo: () => undo(),
+  closePop: (_, b) => { const d = b.closest('details'); if (d) d.open = false; },
+  gotoStock: () => { closePops(); ui.tab = 'ing'; render(); document.getElementById('stock')?.scrollIntoView({ behavior: 'smooth' }); },
+  gotoFees: () => { ui.tab = 'menu'; render(); document.getElementById('fees')?.scrollIntoView({ behavior: 'smooth' }); },
+  addIng: () => { commit(() => { mkIng(S, { name: '' }, today(), Date.now()); }); const ins = app.querySelectorAll('[data-k^="ing.name:"]'); ins[ins.length - 1]?.focus(); },
+  delIng: d => { const ing = findIng(d.id); const used = S.menus.filter(m => m.recipe.some(l => l.ingId === d.id)).map(m => m.name); confirmDel(`"${ing.name || '이름 없는 재료'}"를 지울까요?`, used.length ? `이 재료가 들어간 메뉴(${used.join(', ')})의 레시피에서도 빠져요.` : '재고 카드와 구매 기록도 같이 지워져요.', () => commit(() => { S.ingredients = S.ingredients.filter(x => x.id !== d.id); S.purchases = S.purchases.filter(p => p.itemId !== d.id); for (const m of S.menus) m.recipe = m.recipe.filter(l => l.ingId !== d.id); }), '재료를 지웠어요'); },
+  kind: d => commit(() => { const ing = findIng(d.id); ing.kind = d.v; const p = lastPurchase(d.id); if (p) { const q = baseInfo(ing).qty || 0; p.qty = q; p.rawUnit = q ? (p.paid || 0) / q : 0; } }),
+  units: d => { ui.openUnits[d.id] = !ui.openUnits[d.id]; render(); },
+  rebuy: d => { closePops(); openRebuy(d.id); },
+  addSup: () => { commit(() => { mkSup(S, { name: '', packText: '100개 묶음', packs: 1 }, today(), Date.now()); }); const ins = app.querySelectorAll('[data-k^="sup.name:"]'); ins[ins.length - 1]?.focus(); },
+  delSup: d => { const s = findSup(d.id); confirmDel(`"${s.name || '이름 없는 포장재'}"를 지울까요?`, '재고 카드와 구매 기록도 같이 지워져요.', () => commit(() => { S.supplies = S.supplies.filter(x => x.id !== d.id); S.purchases = S.purchases.filter(p => p.itemId !== d.id); }), '포장재를 지웠어요'); },
+  clearUse: d => commit(() => { findItem(d.id).o.dailyManual = null; }),
+  clearUsed: d => commit(() => { const day = S.days[ui.date]; if (day?.used) delete day.used[d.id]; }),
+  adjust: () => openAdjust(),
+  addMenu: () => { let id; commit(() => { id = uid(); S.menus.push({ id, name: '', prices: { store: null }, recipe: [] }); }); ui.menuId = id; ui.tab = 'menu'; render(); document.getElementById('mname')?.focus(); },
+  selMenu: d => { ui.menuId = d.id; render(); },
+  delMenu: d => { const m = findMenu(d.id); confirmDel(`"${m.name || '이름 없는 메뉴'}" 메뉴를 지울까요?`, '지난 판매 기록의 이 메뉴 숫자도 계산에서 빠져요.', () => commit(() => { S.menus = S.menus.filter(x => x.id !== d.id); }), '메뉴를 지웠어요'); },
+  addLine: d => { commit(() => { findMenu(d.id).recipe.push({ id: uid(), ingId: S.ingredients[0]?.id || '', text: '' }); }); const ins = app.querySelectorAll('[data-k^="line.text:"]'); ins[ins.length - 1]?.focus(); },
+  addFixedLine: d => commit(() => { findMenu(d.id).recipe.push({ id: uid(), fixed: true, label: '소금·후추 등', won: 100 }); }),
+  delLine: d => commit(() => { const m = findMenu(d.id); m.recipe = m.recipe.filter(l => l.id !== d.v); }),
+  addCh: () => commit(() => { S.channels.push({ id: uid(), name: '전화 주문', short: '전화 주문', kind: 'custom', app: 0, pay: 0, fee: 0, vat: false, custom: true, edited: {} }); }),
+  delCh: d => { const c = findCh(d.id); confirmDel(`"${c.name}" 판매처를 지울까요?`, '이 판매처로 적은 판매 수량도 계산에서 빠져요.', () => commit(() => { S.channels = S.channels.filter(x => x.id !== d.id); }), '판매처를 지웠어요'); },
+  applyRates: () => commit(() => { for (const c of S.rateNotice?.changes || []) if (!c.applied) { const ch = findCh(c.id); if (ch) { ch[c.f] = c.nw; if (ch.edited) delete ch.edited[c.f]; } } S.rateNotice = null; }),
+  dismissRates: () => { S.rateNotice = null; C = {}; scheduleSave(); render(); },
+  day: d => { ui.date = addDays(ui.date, Number(d.v)); render(); },
+  dayToday: () => { ui.date = today(); render(); },
+  gotoDay: d => { ui.date = d.v; render(); scrollTo(0, 0); },
+  addExp: () => { commit(() => { dayOf(ui.date, true).expenses.push({ id: uid(), name: '', amount: null, memo: '' }); }); const ins = app.querySelectorAll('[data-k^="exp.name:"]'); ins[ins.length - 1]?.focus(); },
+  delExp: d => commit(() => { const day = dayOf(ui.date, true); day.expenses = day.expenses.filter(x => x.id !== d.id); }),
+  addRev: () => commit(() => { dayOf(ui.date, true).reviews.push({ id: uid(), name: '리뷰 이벤트', count: 1, menuId: S.menus[0]?.id || null, perCost: null }); }),
+  delRev: d => commit(() => { const day = dayOf(ui.date, true); day.reviews = day.reviews.filter(x => x.id !== d.id); }),
+  addTr: () => { commit(() => { dayOf(ui.date, true).transfers.push({ id: uid(), amount: null, memo: '' }); }); const ins = app.querySelectorAll('[data-k^="tr.amount:"]'); ins[ins.length - 1]?.focus(); },
+  delTr: d => commit(() => { const day = dayOf(ui.date, true); day.transfers = day.transfers.filter(x => x.id !== d.id); }),
+  month: d => { ui.month = addMonths(ui.month, Number(d.v)); render(); },
+  addFx: () => { commit(() => { S.fixedCosts.push({ id: uid(), name: '', annual: false, hist: [{ from: ui.month, amount: 0 }] }); }); const ins = app.querySelectorAll('[data-k^="fx.name:"]'); ins[ins.length - 1]?.focus(); },
+  delFx: d => { const f = S.fixedCosts.find(x => x.id === d.id); confirmDel(`"${f.name || '이름 없는 항목'}"을(를) 지울까요?`, '지난달 계산에서도 빠져요. 이번 달부터 안 나가는 돈이면 금액을 0으로 고치는 게 좋아요.', () => commit(() => { S.fixedCosts = S.fixedCosts.filter(x => x.id !== d.id); }), '항목을 지웠어요'); },
+  pickFile: () => pickFile(), openFile: () => openFile(), reconnect: () => reconnect(),
+  exportJson: () => exportJson(), importJson: () => document.getElementById('importFile').click(), exportCsv: () => exportCsv(ui.month),
+  demo: () => confirmDel('예시 장부를 넣을까요?', '지금 적어 둔 장부 대신 시안과 비슷한 가짜 숫자가 들어가요. "방금 한 일 되돌리기"로 원래 장부로 돌아올 수 있어요.', () => { commit(() => { const keep = { dismissed: S.settings.dismissed }; const d = demoState(); S = d; S.settings.dismissed = keep.dismissed; }); ui.menuId = null; render(); }, '예시 장부를 넣었어요', '넣기'),
+  dismiss: d => { S.settings.dismissed = Object.assign({}, S.settings.dismissed, { [d.id]: true }); scheduleSave(); render(); },
+  install: async () => { if (!deferredInstall) return; deferredInstall.prompt(); try { await deferredInstall.userChoice; } catch {} deferredInstall = null; render(); },
+  dlgClose: () => dlg.close(),
+};
+
+/* ============ 창 (재구매·확인·맞추기) ============ */
+const dlg = document.getElementById('dlg');
+function confirmDel(title, desc, onYes, doneMsg, yesLabel = '지우기') {
+  dlg.innerHTML = `<form method="dialog" class="dlg"><div class="dt">${esc(title)}</div><div class="ds">${esc(desc)}</div><div class="dacts"><button type="button" class="btn-line" data-d="no">취소</button><button type="button" class="btn-red" data-d="yes">${esc(yesLabel)}</button></div></form>`;
+  dlg.onclick = e => { const b = e.target.closest('[data-d]'); if (!b) return; dlg.close(); if (b.dataset.d === 'yes') { onYes(); toast(doneMsg + '. 잘못 눌렀으면 되돌릴 수 있어요.', true); } };
+  dlg.showModal(); dlg.querySelector('[data-d="no"]').focus();
+}
+function openRebuy(id) {
+  const it = findItem(id); if (!it) return;
+  const isIng = it.type === 'ing', o = it.o, pi = packInfo(it), lp = lastPurchase(id), st = stockAt(it, today());
+  const defQty = isIng ? (o.buyText || '') : `1 ${pi.name}`;
+  const defPaid = isIng ? (lp?.paid || '') : (o.price || '');
+  const defLeft = isIng ? fmtS(st) + ' ' + pi.unit : packTxt(it, st);
+  dlg.innerHTML = `<form method="dialog" class="dlg"><div class="dt">${esc(nameOf(it))} 재구매</div><div class="ds">시장에서 다시 사 온 날 눌러요. 가격이 오르내리면 여기서 바뀌어요.</div>
+<div class="dfs">
+<div><label for="rb-qty">오늘 산 양</label><input id="rb-qty" class="inp" value="${esc(defQty)}" placeholder="${isIng ? '예: 1 kg' : '예: 2 ' + esc(pi.name)}"></div>
+<div><label for="rb-paid">낸 돈 (원)</label><input id="rb-paid" class="inp num" inputmode="decimal" value="${esc(defPaid ? won(defPaid) : '')}" placeholder="예: 15,000"></div>
+<div><label for="rb-left">남아 있던 양 (모르면 비워두세요)</label><input id="rb-left" class="inp" value="${esc(defLeft)}" placeholder="비우면 새 가격으로 바로 바꿔요"></div>
+${isIng ? '' : `<label class="chk" style="font-weight:500"><input type="checkbox" id="rb-exp" checked>낸 돈을 오늘 쓴 돈에도 적기</label>`}
+</div>
+<div class="preview" id="rb-pv"></div>
+<div class="dacts"><button type="button" class="btn-line" data-d="no">취소</button><button type="button" class="btn-dark" data-d="yes" style="min-width:110px;font-size:17px">저장</button></div></form>`;
+  const qEl = dlg.querySelector('#rb-qty'), pEl = dlg.querySelector('#rb-paid'), lEl = dlg.querySelector('#rb-left'), pv = dlg.querySelector('#rb-pv');
+  const calc = () => {
+    let q, err = null;
+    if (isIng) { const p = parseAmt(qEl.value); if (!p) err = '산 양을 적어 주세요'; else { const b = toBase(o, p.n, p.unit || baseUnit(o)); if (b.err) err = b.err; else q = b.v; } }
+    else { q = parseStockInput(it, qEl.value); if (q == null) err = '산 양을 적어 주세요'; }
+    const paid = num(pEl.value) || 0;
+    const left = lEl.value.trim() ? (isIng ? (() => { const p = parseAmt(lEl.value); if (!p) return null; const b = toBase(o, p.n, p.unit || baseUnit(o)); return b.err ? null : b.v; })() : parseStockInput(it, lEl.value)) : null;
+    let raw = null;
+    if (isIng && q) raw = left != null ? (left * rawUnitAt(o, today()) + paid) / (left + q) : paid / q;
+    return { q, paid, left, raw, err };
+  };
+  const upd = () => {
+    const c = calc();
+    if (c.err) { pv.innerHTML = `<div class="hint err" style="font-size:15px">${esc(c.err)}</div>`; return; }
+    if (isIng) {
+      const eu = c.raw / yieldF(o), bu = baseUnit(o);
+      pv.innerHTML = `<div class="ps">새 1${bu}당 가격</div><div class="pv">${unitFmt(eu)}원 / ${bu}</div><div class="ps">${c.left != null ? `남아 있던 ${W(c.left * rawUnitAt(o, today()))}어치와 새로 산 ${W(c.paid)}을 합쳐 ${fmtS(c.left + c.q)}${bu}로 나눈 값이에요. 남은 양을 비우면 새 가격 ${unitFmt(c.paid / c.q / yieldF(o))}원/${bu}로 바꿔요.` : `남은 양을 비워서 새 가격으로 바로 바꿔요.`}${yieldF(o) < 1 ? ` (손질하고 남는 양 ${o.yield}% 반영)` : ''}</div><div class="ps">저장하면 남은 양이 ${stockLabel(it, (c.left != null ? c.left : st) + c.q)}가 돼요.</div>`;
+    } else pv.innerHTML = `<div class="ps">저장하면 남은 양</div><div class="pv">${stockLabel(it, (c.left != null ? c.left : st) + c.q)}</div>`;
+  };
+  dlg.oninput = upd; upd();
+  dlg.onclick = e => {
+    const b = e.target.closest('[data-d]'); if (!b) return;
+    if (b.dataset.d === 'no') return dlg.close();
+    const c = calc(); if (c.err) { upd(); return; }
+    const addExp = !isIng && dlg.querySelector('#rb-exp')?.checked;
+    dlg.close();
+    commit(() => {
+      const ts = Date.now(), t = today();
+      const p = { id: uid(), itemId: id, type: it.type, date: t, ts, qty: c.q, paid: Math.round(c.paid), leftover: c.left, addsToStock: c.left == null, anchored: c.left != null };
+      if (isIng) { p.rawUnit = c.raw; o.buyText = qEl.value.trim(); }
+      else if (c.paid && c.q) o.price = Math.round(c.paid / (c.q / pi.size));
+      S.purchases.push(p);
+      if (c.left != null) o.anchor = { date: t, ts, qty: c.left + c.q, usageAtAnchor: usage(it, t) };
+      o.anchorAuto = false;
+      if (addExp && c.paid) dayOf(t, true).expenses.push({ id: uid(), name: o.name || '포장재', amount: Math.round(c.paid), memo: '재구매' });
+    });
+    toast(isIng ? `저장했어요. 새 가격 ${unitFmt(c.raw / yieldF(o))}원/${baseUnit(o)}. 메뉴 재료비도 바뀌었어요.` : '저장했어요. 남은 양이 늘었어요.', true);
+  };
+  dlg.showModal(); qEl.focus(); qEl.select();
+}
+function openAdjust() {
+  const items = stockItems();
+  dlg.innerHTML = `<form method="dialog" class="dlg"><div class="dt">실제 남은 양 맞추기</div><div class="ds">눈대중 오차가 쌓이면 여기서 세어 본 대로 고쳐요. 산 단위 그대로 적어요 (반 통은 0.5). 고치지 않은 칸은 그대로예요.</div>
+<div class="adj-list">${items.map(it => `<div class="adj-row"><span class="nm">${esc(nameOf(it))}</span><input class="inp sm num" data-id="${it.o.id}" placeholder="${esc(packTxt(it, stockAt(it, today())))}" aria-label="${esc(nameOf(it))} 실제 남은 양"><span class="mut" style="width:60px">${esc(packInfo(it).name)}</span></div>`).join('') || '<div class="mut">재료나 포장재가 없어요.</div>'}</div>
+<div class="dacts"><button type="button" class="btn-line" data-d="no">취소</button><button type="button" class="btn-dark" data-d="yes">저장</button></div></form>`;
+  dlg.oninput = null;
+  dlg.onclick = e => {
+    const b = e.target.closest('[data-d]'); if (!b) return;
+    if (b.dataset.d === 'yes') {
+      const ch = [...dlg.querySelectorAll('input[data-id]')].filter(x => x.value.trim()).map(x => { const it = findItem(x.dataset.id); return { it, q: parseStockInput(it, x.value) }; }).filter(x => x.q != null);
+      if (ch.length) { const t = today(); commit(() => { for (const { it, q } of ch) { it.o.anchor = { date: t, ts: Date.now(), qty: q, usageAtAnchor: usage(it, t) }; it.o.anchorAuto = false; } }); toast(`${ch.length}개 품목의 남은 양을 맞췄어요`, true); }
+    }
+    dlg.close();
+  };
+  dlg.showModal();
+}
+let toastTimer;
+function toast(msg, withUndo) {
+  const el = document.getElementById('toast');
+  el.innerHTML = `<span>${esc(msg)}</span>${withUndo ? '<button type="button" id="toast-undo">되돌리기</button>' : ''}`;
+  el.hidden = false;
+  const u = document.getElementById('toast-undo'); if (u) u.onclick = () => { el.hidden = true; undo(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, withUndo ? 7000 : 3500);
+}
+
+/* ============ 저장 (IndexedDB + 파일) ============ */
+const fsSupported = 'showSaveFilePicker' in window;
+let fileHandle = null, fileState = 'none', saveTimer = null, dbp = null;
+function idb() {
+  if (!dbp) dbp = new Promise((res, rej) => { try { const r = indexedDB.open('modu-jangbu', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } });
+  return dbp;
+}
+async function kvGet(k) { try { const db = await idb(); return await new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); } catch { return undefined; } }
+async function kvSet(k, v) { try { const db = await idb(); await new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); return true; } catch { return false; } }
+const safeParse = t => { try { const d = JSON.parse(t); return d && typeof d === 'object' ? d : null; } catch { return null; } };
+function scheduleSave() { ui.saving = true; renderStatus(); clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 400); }
+async function saveNow() {
+  clearTimeout(saveTimer);
+  const json = JSON.stringify(S);
+  ui.idbOk = await kvSet('ledger', json);
+  const before = fileState;
+  if (fileHandle) {
+    try {
+      if ((await fileHandle.queryPermission({ mode: 'readwrite' })) !== 'granted') throw new Error('perm');
+      const w = await fileHandle.createWritable(); await w.write(json); await w.close();
+      fileState = 'ok'; ui.lastFileSave = Date.now();
+    } catch { fileState = 'lost'; }
+  }
+  ui.saving = false;
+  if (before !== fileState) render(); else renderStatus();
+}
+async function writeFile(h) { const w = await h.createWritable(); await w.write(JSON.stringify(S)); await w.close(); }
+async function pickFile() {
+  if (!fsSupported) return toast('이 브라우저에서는 파일 자동 저장을 쓸 수 없어요. 크롬이나 엣지에서 열어 주세요. 대신 "백업 파일 받기"를 눌러 두세요.');
+  try {
+    const h = await showSaveFilePicker({ suggestedName: '모두의장부.json', types: [{ description: '모두의장부 장부 파일', accept: { 'application/json': ['.json'] } }] });
+    await writeFile(h); fileHandle = h; fileState = 'ok'; ui.lastFileSave = Date.now();
+    await kvSet('fileHandle', h); render(); toast('저장 위치를 정했어요. 이제 적을 때마다 이 파일에도 저장돼요.');
+  } catch (e) { if (e && e.name !== 'AbortError') toast('파일을 고를 수 없어요. 크롬·엣지에서 앱 주소로 열었는지 확인해 주세요.'); }
+}
+async function openFile() {
+  if (!('showOpenFilePicker' in window)) return toast('이 브라우저에서는 파일을 열 수 없어요. "백업 불러오기"를 써 주세요.');
+  try {
+    const [h] = await showOpenFilePicker({ types: [{ description: '모두의장부 장부 파일', accept: { 'application/json': ['.json'] } }] });
+    const d = safeParse(await (await h.getFile()).text());
+    if (!d || !Array.isArray(d.menus)) return toast('모두의장부 파일이 아니에요.');
+    if ((await h.requestPermission({ mode: 'readwrite' })) !== 'granted') return toast('저장 허용을 눌러야 이 파일에 자동 저장돼요.');
+    confirmDel('이 파일의 장부로 바꿀까요?', `${h.name} 파일에 저장된 장부를 열고, 앞으로 이 파일에 자동 저장해요. 지금 화면의 장부는 "되돌리기"로 돌아올 수 있어요.`, async () => { commit(() => { S = migrate(d); }); fileHandle = h; fileState = 'ok'; await kvSet('fileHandle', h); saveNow(); }, '장부 파일을 열었어요', '열기');
+  } catch (e) { if (e && e.name !== 'AbortError') toast('파일을 열 수 없어요.'); }
+}
+async function reconnect() {
+  if (!fileHandle) return pickFile();
+  try {
+    if ((await fileHandle.requestPermission({ mode: 'readwrite' })) !== 'granted') return toast('"허용"을 눌러야 파일에 저장돼요.');
+    const d = safeParse(await (await fileHandle.getFile()).text());
+    if (d && Array.isArray(d.menus) && (d.savedAt || '') > (S.savedAt || '')) { S = migrate(d); C = {}; }
+    fileState = 'ok'; await saveNow(); render(); toast('다시 연결했어요. 파일에도 저장돼요.');
+  } catch { toast('파일을 찾을 수 없어요. 옮기거나 지웠다면 "저장 위치 고르기"로 새로 정해 주세요.'); fileState = 'lost'; render(); }
+}
+function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
+function exportJson() { download(`모두의장부-백업-${today()}.json`, JSON.stringify(S, null, 1), 'application/json'); toast('백업 파일을 받았어요. 다운로드 폴더를 확인해 주세요.'); }
+document.getElementById('importFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const d = safeParse(await f.text());
+  if (!d || !Array.isArray(d.menus)) return toast('모두의장부 백업 파일이 아니에요.');
+  confirmDel('백업 파일로 바꿀까요?', `${f.name}의 장부로 바꿔요. 지금 장부는 "되돌리기"로 돌아올 수 있어요.`, () => { commit(() => { S = migrate(d); }); ui.menuId = null; render(); }, '백업을 불러왔어요', '불러오기');
+});
+function exportCsv(M) {
+  const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const R = Math.round;
+  const rows = [['날짜', '요일', '쉬는 날', '매출', '매장 매출', '배달·포장 매출', '계좌이체', '재료비', '수수료·배달비', '쓴 돈', '리뷰 이벤트', '매달 나가는 돈 하루 몫', '순 남는 돈']];
+  for (const d of monthDates(M)) { if (!S.days[d] && d > today()) continue; const c = dayCalc(d); rows.push([d, WD[pdate(d).getDay()], c.closed ? 'O' : '', R(c.revenue), R(c.store), R(c.takeout), R(c.transfers), R(c.ing), R(c.fees), R(c.expenses), R(c.review), R(c.share), R(c.net)]); }
+  const r = monthCalc(M);
+  rows.push([], ['합계'], ['월 매출', R(r.revenue)], ['월 재료비', R(r.ing)], ['수수료·배달비', R(r.fees)], ['쓴 돈', R(r.expenses)], ['리뷰 이벤트', R(r.review)], ['매달 나가는 돈', R(r.fixed)], ['이번 달 남는 돈' + (r.cur ? ' (오늘까지)' : ''), R(r.netShown)], ['한 달치 고정비를 다 뺀 값', R(r.net)], ['본전 매출', R(r.breakEven)], ['장 본 돈(재구매 기록)', R(r.bought)]);
+  rows.push([], ['매달 나가는 돈 항목', '금액']); for (const f of S.fixedCosts) rows.push([f.name, fixedAmount(f, M)]);
+  rows.push([], ['쓴 돈 내역', '날짜', '금액', '메모']); for (const d of monthDates(M)) for (const e of S.days[d]?.expenses || []) rows.push([e.name, d, e.amount, e.memo]);
+  rows.push([], ['메뉴', '판 개수', '매출']); for (const m of S.menus) { const e = r.menus[m.id]; if (e) rows.push([m.name, e.qty, R(e.sales)]); }
+  download(`모두의장부-${M}.csv`, '﻿' + rows.map(x => x.map(q).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
+  toast('엑셀에서 열 수 있는 CSV 파일을 받았어요.');
+}
+
+/* ============ 수수료 기본값 자동 확인 (한 달에 한 번) ============ */
+async function checkRates() {
+  const last = S.settings.ratesCheckedAt;
+  if (last && Date.now() - Date.parse(last) < 30 * 864e5) return;
+  if (!location.protocol.startsWith('http')) return;
+  try {
+    const r = await fetch('rates.json', { cache: 'no-store' }); if (!r.ok) return;
+    const j = await r.json(); if (!j || !j.channels) return;
+    S.settings.ratesCheckedAt = new Date().toISOString();
+    if (j.version && j.version === S.settings.ratesVersion) { scheduleSave(); return; }
+    const changes = [];
+    for (const [id, vals] of Object.entries(j.channels)) {
+      const ch = findCh(id); if (!ch) continue;
+      for (const f of ['app', 'pay', 'fee']) {
+        if (vals[f] == null || Number(vals[f]) === num(ch[f])) continue;
+        if (ch.edited?.[f]) changes.push({ id, f, old: num(ch[f]), nw: Number(vals[f]), applied: false });
+        else { changes.push({ id, f, old: num(ch[f]), nw: Number(vals[f]), applied: true }); ch[f] = Number(vals[f]); }
+      }
+    }
+    const first = !S.settings.ratesVersion;
+    S.settings.ratesVersion = j.version || null;
+    if (changes.length && !first) S.rateNotice = { version: j.version, changes };
+    C = {}; scheduleSave(); render();
+  } catch {}
+}
+
+/* ============ 설치 (PWA) ============ */
+let deferredInstall = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; if (S) render(); });
+addEventListener('appinstalled', () => { deferredInstall = null; if (S) { S.settings.dismissed = Object.assign({}, S.settings.dismissed, { install: true }); scheduleSave(); render(); } });
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) { addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); }); }
+
+/* ============ 시작 ============ */
+async function boot() {
+  const raw = await kvGet('ledger');
+  let data = raw ? safeParse(raw) : null;
+  try { fileHandle = (await kvGet('fileHandle')) || null; } catch { fileHandle = null; }
+  if (fileHandle) {
+    try {
+      if ((await fileHandle.queryPermission({ mode: 'readwrite' })) === 'granted') {
+        const fd = safeParse(await (await fileHandle.getFile()).text());
+        if (fd && Array.isArray(fd.menus) && (!data || (fd.savedAt || '') > (data.savedAt || ''))) data = fd;
+        fileState = 'ok';
+      } else fileState = 'lost';
+    } catch { fileState = 'lost'; }
+  }
+  S = migrate(data || seedState());
+  if (!data) { S.savedAt = new Date().toISOString(); ui.idbOk = await kvSet('ledger', JSON.stringify(S)); }
+  render();
+  checkRates();
+  // 자정이 지나면 날짜를 넘긴다
+  setInterval(() => { const t = today(); if (ui.lastToday && ui.lastToday !== t) { if (ui.date === ui.lastToday) ui.date = t; if (ui.month === monthOf(ui.lastToday)) ui.month = monthOf(t); C = {}; render(); } ui.lastToday = t; }, 60000);
+  ui.lastToday = today();
+}
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && S && ui.saving) saveNow(); });
+boot();
+</script>
+</body>
+</html>
