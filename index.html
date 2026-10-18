@@ -954,6 +954,8 @@ function stockCard(it) {
   const o = it.o, s = stockStatus(it), pi = s.pi, lp = lastPurchase(o.id), id = o.id;
   const isSup = it.type === 'sup';
   const rule = o.rule || {};
+  const unitP = isSup && num(o.price) ? num(o.price) / pi.size : null, uW = n => fmtQ(n, n < 100 ? 1 : 0) + '원';
+  const useP = unitP != null && rule.mode !== 'none' && num(rule.count) ? unitP * num(rule.count) : null;
   const useHint = o.dailyManual != null ? `<span class="mine">직접 고침</span> · ${s.auto != null ? '자동 계산 ' + fmtS(s.auto) + ' ' + pi.unit : '판매 기록 없음'} <button type="button" class="linkbtn" data-a="clearUse" data-id="${id}">자동으로</button>` : (s.auto != null ? `자동 계산 ${fmtS(s.auto)} ${pi.unit}` : '판매 기록이 쌓이면 채워요');
   return `<div class="scard lv-${s.lv}">
 <div class="sc-top">
@@ -970,12 +972,12 @@ ${isSup ? `<button type="button" class="btn-del" data-a="delSup" data-id="${id}"
 <div class="fld"><label>지금 남은 양</label>${IT('st.now:' + id + ':' + today(), packTxt(it, s.st), '예: 0.5 ' + pi.name, nameOf(it) + ' 남은 양', 'sm num')}<div class="hint">${baseTxt(it, s.st)}</div></div>
 <div class="fld" style="flex-basis:190px"><label>하루에 쓰는 양 (${esc(pi.unit)})</label>${IT('st.use:' + id, o.dailyManual != null ? fmtS(o.dailyManual) + ' ' + pi.unit : '', s.auto != null ? fmtS(s.auto) + ' ' + pi.unit + ' (자동)' : '비어 있음 (계산 중)', nameOf(it) + ' 하루 쓰는 양', 'sm num')}<div class="hint">${useHint}</div></div>
 <div class="fld"><label>이 밑이면 위험</label>${IT('st.min:' + id, o.minPacks != null ? fmtQ(o.minPacks, 2) + ' ' + pi.name : '', '예: 1 ' + pi.name, nameOf(it) + ' 최소 재고', 'sm num')}<div class="hint">&nbsp;</div></div>
-${isSup ? `<div class="fld"><label>한 ${esc(pi.name)} 가격 (원)</label>${IN('sup.price:' + id, money(o.price), '예: 18,000', o.name + ' 가격', 'sm')}<div class="hint">&nbsp;</div></div>
+${isSup ? `<div class="fld"><label>한 ${esc(pi.name)} 가격 (원)</label>${IN('sup.price:' + id, money(o.price), '예: 18,000', o.name + ' 가격', 'sm')}<div class="hint">${unitP != null ? `1${esc(pi.unit)}에 ${uW(unitP)}` : '&nbsp;'}</div></div>
 <div class="fld wide"><span class="lb">어디에 써요? (고칠 수 있어요)</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
 <select class="inp sm" style="width:auto" data-k="sup.mode:${id}" aria-label="${esc(o.name)} 쓰는 기준"><option value="order" ${rule.mode === 'order' ? 'selected' : ''}>포장·배달 주문 1건마다</option><option value="menu" ${rule.mode === 'menu' ? 'selected' : ''}>메뉴 1개(포장·배달)마다</option><option value="none" ${rule.mode === 'none' ? 'selected' : ''}>자동으로 안 빼요</option></select>
 ${rule.mode === 'menu' ? `<select class="inp sm" style="width:auto" data-k="sup.menu:${id}" aria-label="어느 메뉴"><option value="all" ${rule.menuId === 'all' ? 'selected' : ''}>모든 메뉴</option>${S.menus.map(m => `<option value="${m.id}" ${rule.menuId === m.id ? 'selected' : ''}>${esc(m.name || '(이름 없음)')}</option>`).join('')}</select>` : ''}
 ${rule.mode !== 'none' ? `<input class="inp sm num" style="width:70px" inputmode="decimal" data-k="sup.count:${id}" value="${esc(rule.count ?? '')}" aria-label="몇 개"><span class="mut">${esc(pi.unit)}</span>` : ''}
-</div><div class="hint">&nbsp;</div></div>` : ''}
+</div><div class="hint">${useP != null ? `${rule.mode === 'order' ? '주문 1건' : '메뉴 1개'}마다 포장재 값 ${uW(useP)}` : '&nbsp;'}</div></div>` : ''}
 </div></div>`;
 }
 
