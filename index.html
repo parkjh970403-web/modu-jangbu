@@ -608,7 +608,7 @@ const pctOf = ch => ((num(ch.app) || 0) + (num(ch.pay) || 0)) / 100;
 function chQty(day, chId) { let q = 0; for (const m in day?.sales || {}) q += num(day.sales[m][chId]) || 0; return q; }
 function menuQty(day, mid, takeoutOnly) { const r = day?.sales?.[mid]; if (!r) return 0; let q = 0; for (const ch of S.channels) if (!takeoutOnly || isTakeout(ch)) q += num(r[ch.id]) || 0; return q; }
 const reviewQty = (day, mid) => (day?.reviews || []).reduce((a, r) => a + (r.menuId === mid ? (num(r.count) || 0) : 0), 0);
-const ordersOf = (day, chId) => { const v = day?.orders?.[chId]; return v == null || v === '' ? chQty(day, chId) : num(v) || 0; };
+const ordersOf = (day, chId) => { const v = day?.orders?.[chId], q = chQty(day, chId); return v == null || v === '' ? q : Math.min(num(v) || 0, q); };
 function chFee(ch, sales, orders, day) {
   if (ch.kind === 'store') return 0;
   const v = vatF(ch), pct = pctOf(ch);
@@ -774,6 +774,16 @@ function packParts(o) {
   return { amt: fmtQ(p.n, 2) + ' ' + p.unit, name: p.rest || dn };
 }
 const joinPack = (amt, name) => (String(amt || '').trim() ? String(amt).trim() + ' ' : '') + name;
+// 재고 수량 칸: 숫자 + 단위 고르기 (봉지·통 같은 포장 이름, g·kg, ml·L, 개). 고른 단위는 칸마다 기억
+function quOpts(it) { const pi = packInfo(it), ex = pi.unit === 'g' ? ['g', 'kg'] : pi.unit === 'ml' ? ['ml', 'L'] : [pi.unit]; return [pi.name, ...ex.filter(u => u !== pi.name)]; }
+function quUnit(it, k) { const os = quOpts(it), u = ui.qu?.[k]; return os.includes(u) ? u : os[0]; }
+function quVal(it, base, u) {
+  if (base == null || !isFinite(base)) return '';
+  const pi = packInfo(it), v = u === pi.name ? base / pi.size : u === 'kg' || u === 'L' ? base / 1000 : base;
+  return fmtQ(v, v >= 10 ? 1 : 2);
+}
+const quAlt = (it, k, base) => quUnit(it, k) === packInfo(it).name ? baseTxt(it, base) : `(${packTxt(it, base)})`;
+const QU = (k, it, base, ph, label) => { const u = quUnit(it, k); return `<div style="display:flex;gap:4px"><input class="inp sm num" style="min-width:0;flex:1 1 auto" inputmode="decimal" data-k="${esc(k)}" data-qn="1" value="${esc(quVal(it, base, u))}" placeholder="${esc(typeof ph === 'function' ? ph(u) : ph)}" aria-label="${esc(label)}"><select class="inp sm" style="width:auto;flex:0 0 auto;padding-right:4px" data-qu="${esc(k)}" aria-label="${esc(label)} 단위">${quOpts(it).map(x => `<option ${x === u ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>`; };
 const stockLabel = (item, base) => { const pi = packInfo(item); return `${fmtQ(base / pi.size, 1)}${pi.name} (${fmtS(base)}${pi.unit})`; };
 const packTxt = (item, base) => { const pi = packInfo(item); return `${fmtQ(base / pi.size, 1)} ${pi.name}`; };
 const baseTxt = (item, base) => `(${fmtS(base)} ${packInfo(item).unit})`;
@@ -987,11 +997,10 @@ ${isSup ? `<button type="button" class="btn-del" data-a="delSup" data-id="${id}"
 </div>
 <div class="sc-fields">
 ${isSup ? `<div class="fld"><label>한 번에 사는 단위</label>${IT('st.pack:' + id, o.packText, '예: 50개 묶음', nameOf(it) + ' 단위', 'sm num')}<div class="hint">&nbsp;</div></div>` : packFld(it, pi)}
-<div class="fld"><label>마지막에 산 양</label>${IT('st.last:' + id, lp ? packTxt(it, lp.qty) : '', '예: 2 ' + pi.name, nameOf(it) + ' 산 양', 'sm num')}<div class="hint">${lp ? mmdd(lp.date) + '에 샀어요' : '&nbsp;'}</div></div>
-<div class="fld"><label>지금 남은 양</label>${IT('st.now:' + id + ':' + today(), packTxt(it, s.st), '예: 0.5 ' + pi.name, nameOf(it) + ' 남은 양', 'sm num')}<div class="hint">${baseTxt(it, s.st)}</div></div>
-${isSup ? `<div class="fld" style="flex-basis:190px"><label>하루에 쓰는 양 (${esc(pi.unit)})</label>${IT('st.use:' + id, o.dailyManual != null ? fmtS(o.dailyManual) + ' ' + pi.unit : '', s.auto != null ? fmtS(s.auto) + ' ' + pi.unit + ' (자동)' : '비어 있음 (계산 중)', nameOf(it) + ' 하루 쓰는 양', 'sm num')}<div class="hint">${useHint}</div></div>`
-  : `<div class="fld" style="flex-basis:190px"><label>하루에 쓰는 양 (${esc(pi.name)})</label>${IT('st.use:' + id, o.dailyManual != null ? packTxt(it, o.dailyManual) : '', s.auto != null ? packTxt(it, s.auto) + ' (자동)' : '예: 0.5 ' + pi.name, nameOf(it) + ' 하루 쓰는 양', 'sm num')}<div class="hint">${useHint}</div></div>`}
-<div class="fld"><label>이 밑이면 위험</label>${IT('st.min:' + id, o.minPacks != null ? fmtQ(o.minPacks, 2) + ' ' + pi.name : '', '예: 1 ' + pi.name, nameOf(it) + ' 최소 재고', 'sm num')}<div class="hint">&nbsp;</div></div>
+<div class="fld" style="flex-basis:170px"><label>마지막에 산 양</label>${QU('st.last:' + id, it, lp ? lp.qty : null, '예: 2', nameOf(it) + ' 산 양')}<div class="hint">${lp ? mmdd(lp.date) + '에 샀어요' : '&nbsp;'}</div></div>
+<div class="fld" style="flex-basis:170px"><label>지금 남은 양</label>${QU('st.now:' + id + ':' + today(), it, s.st, '예: 0.5', nameOf(it) + ' 남은 양')}<div class="hint">${quAlt(it, 'st.now:' + id + ':' + today(), s.st)}</div></div>
+<div class="fld" style="flex-basis:190px"><label>하루에 쓰는 양</label>${QU('st.use:' + id, it, o.dailyManual, s.auto != null ? u => quVal(it, s.auto, u) + ' (자동)' : '예: 0.5', nameOf(it) + ' 하루 쓰는 양')}<div class="hint">${useHint}</div></div>
+<div class="fld" style="flex-basis:170px"><label>이 밑이면 위험</label>${QU('st.min:' + id, it, o.minPacks != null ? o.minPacks * pi.size : null, '예: 1', nameOf(it) + ' 최소 재고')}<div class="hint">&nbsp;</div></div>
 ${isSup ? `<div class="fld"><label>한 ${esc(pi.name)} 가격 (원)</label>${IN('sup.price:' + id, money(o.price), '예: 18,000', o.name + ' 가격', 'sm')}<div class="hint">${unitP != null ? `1${esc(pi.unit)}에 ${uW(unitP)}` : '&nbsp;'}</div></div>
 <div class="fld wide"><span class="lb">어디에 써요? (고칠 수 있어요)</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
 <select class="inp sm" style="width:auto" data-k="sup.mode:${id}" aria-label="${esc(o.name)} 쓰는 기준"><option value="order" ${rule.mode === 'order' ? 'selected' : ''}>포장·배달 주문 1건마다</option><option value="menu" ${rule.mode === 'menu' ? 'selected' : ''}>메뉴 1개(포장·배달)마다</option><option value="none" ${rule.mode === 'none' ? 'selected' : ''}>자동으로 안 빼요</option></select>
@@ -1123,7 +1132,7 @@ function viewToday() {
     if (ch.kind === 'store') return '<td class="mut" style="text-align:center">-</td>';
     const q = chQty(day, ch.id), ov = day?.orders?.[ch.id];
     if (!q && (ov == null || ov === '')) return '<td class="mut" style="text-align:center">-</td>';
-    return `<td>${IN('ord:' + ch.id, ov ?? '', String(q), ch.short + ' 주문 건수', 'sm')}<div class="hint" style="font-weight:400">${ov == null || ov === '' ? `비우면 ${q}건` : `메뉴 ${q}개`}</div></td>`;
+    return `<td>${IN('ord:' + ch.id, ov ?? '', String(q), ch.short + ' 주문 건수', 'sm')}${ov != null && ov !== '' && num(ov) > q ? `<div class="hint err">메뉴 ${q}개보다 많을 수 없어요. ${q}건으로 계산해요</div>` : `<div class="hint" style="font-weight:400">${ov == null || ov === '' ? `비우면 ${q}건` : `메뉴 ${q}개`}</div>`}</td>`;
   }).join('')}<td></td></tr></tfoot>` : '';
   const items = stockItems();
   const past = []; for (let i = 1; i <= 7; i++) past.push(addDays(D, -i));
@@ -1191,11 +1200,11 @@ ${(day?.transfers || []).map((tr, i) => `<tr><td><b>계좌이체</b><div class="
 <div class="h2">쓴 재료와 포장재, 남은 재고</div>
 <div class="mut" style="font-size:15px">쓴 양은 팔린 수로 자동으로 채워져 있어요. 실제로 다르게 썼으면 그 칸을 고쳐 주세요. 마감하고 남은 양을 세어 적으면 재고가 정확해져요. 오늘 안 줄었으면 "변함 없음"을 눌러요. 포장재는 "어디에 써요?"에 적어 둔 대로 빠져요.</div>
 <div class="legend">${stChip('red')}<span>하루도 못 버텨요</span>${stChip('yellow')}<span>곧 사야 해요</span>${stChip('green')}<span>넉넉해요</span>${stChip('gray')}<span>계산 중</span></div>
-<div class="tw"><table class="t" style="min-width:780px"><thead><tr><th>이름</th><th style="width:190px">쓴 양 <span style="font-weight:400">(숫자만 적으면 봉지·통 수, 포장재는 개수)</span></th><th style="width:190px">마감 후 남은 양</th><th>버틸 날수</th><th>상태</th></tr></thead><tbody>
+<div class="tw"><table class="t" style="min-width:780px"><thead><tr><th>이름</th><th style="width:210px">쓴 양</th><th style="width:210px">마감 후 남은 양</th><th>버틸 날수</th><th>상태</th></tr></thead><tbody>
 ${items.map(it => { const s = stockStatus(it), st = stockAt(it, D), man = day?.used?.[it.o.id], au = autoUsage(it, D), pi = s.pi; const dd = s.du ? st / s.du : null;
     const isIng = it.type === 'ing', uT = q => isIng ? `${fmtQ(q / pi.size, 2)} ${pi.name}` : `${fmtS(q)} ${pi.unit}`, bT = q => isIng ? ` (${fmtS(q)} ${pi.unit})` : '';
-    return `<tr><td><b>${esc(nameOf(it))}</b></td><td>${IT('used:' + it.o.id, man != null ? uT(man) : '', uT(au), nameOf(it) + ' 쓴 양', 'sm num')}<div class="hint">${man != null ? `<span class="mine">${man === 0 ? '변함 없음' : '직접 고침'}</span>${man === 0 ? '' : bT(man)} · 자동 ${uT(au)} <button type="button" class="linkbtn" data-a="clearUsed" data-id="${it.o.id}">자동으로</button>` : '자동' + bT(au)}${man !== 0 ? ` · <button type="button" class="linkbtn" data-a="noUse" data-id="${it.o.id}">변함 없음</button>` : ''}</div></td>
-<td>${IT('st.now:' + it.o.id + ':' + D, packTxt(it, st), '0', nameOf(it) + ' 남은 양', 'sm num')}<div class="hint">${baseTxt(it, st)}</div></td><td>${dd == null ? '<span class="mut">계산 중</span>' : fmtQ(dd, 1) + '일'}</td><td>${stChip(s.lv)}</td></tr>`; }).join('') || '<tr><td colspan="5" class="mut">재료나 포장재가 없어요.</td></tr>'}
+    return `<tr><td><b>${esc(nameOf(it))}</b></td><td>${QU('used:' + it.o.id, it, man, u => quVal(it, au, u), nameOf(it) + ' 쓴 양')}<div class="hint">${man != null ? `<span class="mine">${man === 0 ? '변함 없음' : '직접 고침'}</span>${man === 0 ? '' : bT(man)} · 자동 ${uT(au)} <button type="button" class="linkbtn" data-a="clearUsed" data-id="${it.o.id}">자동으로</button>` : '자동' + bT(au)}${man !== 0 ? ` · <button type="button" class="linkbtn" data-a="noUse" data-id="${it.o.id}">변함 없음</button>` : ''}</div></td>
+<td>${QU('st.now:' + it.o.id + ':' + D, it, st, '0', nameOf(it) + ' 남은 양')}<div class="hint">${quAlt(it, 'st.now:' + it.o.id + ':' + D, st)}</div></td><td>${dd == null ? '<span class="mut">계산 중</span>' : fmtQ(dd, 1) + '일'}</td><td>${stChip(s.lv)}</td></tr>`; }).join('') || '<tr><td colspan="5" class="mut">재료나 포장재가 없어요.</td></tr>'}
 </tbody></table></div></div>
 <div class="card">
 <div class="h2">지난 며칠</div>
@@ -1439,10 +1448,12 @@ function handleField(el) {
   const k = el.dataset.k; if (!k) return;
   const [f, a, b] = k.split(':');
   const fn = F[f]; if (!fn) return;
-  try { fn(a, b, el.value, el); } catch (e) { console.error(e); }
+  let v = el.value;
+  if (el.dataset.qn && v.trim() && !/[a-zA-Z가-힣]/.test(v)) v = v.trim() + ' ' + el.nextElementSibling.value;
+  try { fn(a, b, v, el); } catch (e) { console.error(e); }
 }
 app.addEventListener('input', e => { if (rendering) return; const el = e.target; if (el.tagName === 'SELECT' || el.type === 'checkbox') return; handleField(el); });
-app.addEventListener('change', e => { if (rendering) return; const el = e.target; if (el.tagName === 'SELECT' || el.type === 'checkbox') handleField(el); else if (el.dataset.k) { lastKey = null; render(); } });
+app.addEventListener('change', e => { if (rendering) return; const el = e.target; if (el.dataset.qu) { ui.qu = { ...ui.qu, [el.dataset.qu]: el.value }; render(); return; } if (el.tagName === 'SELECT' || el.type === 'checkbox') handleField(el); else if (el.dataset.k) { lastKey = null; render(); } });
 app.addEventListener('focusout', e => { if (rendering) return; if (e.target.dataset && e.target.dataset.k && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') setTimeout(() => { if (!app.contains(document.activeElement) || !document.activeElement.dataset.k) render(); }, 0); });
 
 /* ============ 버튼 ============ */
