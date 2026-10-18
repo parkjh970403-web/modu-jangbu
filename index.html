@@ -1118,6 +1118,13 @@ function viewToday() {
     let sum = 0; for (const ch of chs) sum += (num(row[ch.id]) || 0) * (priceOf(m, ch.id, D) || 0);
     return `<tr><td><b>${esc(m.name || '(이름 없음)')}</b><div class="hint">${priceOf(m, 'store') != null ? W(priceOf(m, 'store')) : '가격 없음'}</div></td>${chs.map(ch => { const np = priceOf(m, ch.id, D) == null; if (np && !num(row[ch.id]) && document.activeElement?.dataset?.k !== `sale:${m.id}:${ch.id}`) return `<td class="mut" style="font-size:14px;text-align:center">안 팔아요</td>`; return `<td>${IN(`sale:${m.id}:${ch.id}`, row[ch.id] ? row[ch.id] : '', '0', `${m.name} ${ch.short} 판매 수`, 'sm')}${np ? '<div class="hint err">가격 없음</div>' : ''}</td>`; }).join('')}<td class="r" style="font-weight:700">${W(sum)}</td></tr>`;
   }).join('');
+  // 한 주문에 메뉴를 여러 개 시키면 배달비는 한 번만 나간다. 메뉴 % 수수료는 메뉴마다 나간다
+  const ordRow = chs.some(ch => ch.kind !== 'store') ? `<tfoot><tr><td><b style="white-space:nowrap">주문 건수</b><div class="hint" style="font-weight:400">손님 수</div></td>${chs.map(ch => {
+    if (ch.kind === 'store') return '<td class="mut" style="text-align:center">-</td>';
+    const q = chQty(day, ch.id), ov = day?.orders?.[ch.id];
+    if (!q && (ov == null || ov === '')) return '<td class="mut" style="text-align:center">-</td>';
+    return `<td>${IN('ord:' + ch.id, ov ?? '', String(q), ch.short + ' 주문 건수', 'sm')}<div class="hint" style="font-weight:400">${ov == null || ov === '' ? `비우면 ${q}건` : `메뉴 ${q}개`}</div></td>`;
+  }).join('')}<td></td></tr></tfoot>` : '';
   const items = stockItems();
   const past = []; for (let i = 1; i <= 7; i++) past.push(addDays(D, -i));
   return `<div class="titlebar"><h1 class="h1">오늘 판 것과 쓴 돈을 적어요</h1>
@@ -1140,8 +1147,9 @@ function viewToday() {
 </div>
 <div class="card">
 <div class="h2">팔린 메뉴</div><div class="mut" style="font-size:15px">어디서 팔렸는지 나눠서 적어요. 배달앱, 네이버 포장, 가게 배달은 수수료가 달라서 따로 계산해요.</div>
-${S.menus.length ? `<div class="tw"><table class="t" style="min-width:${300 + chs.length * 100}px"><thead><tr><th>메뉴</th>${chs.map(ch => `<th>${esc(ch.short)}</th>`).join('')}<th class="r">합계</th></tr></thead><tbody>${salesRows}</tbody></table></div>` : '<div class="mut">메뉴가 없어요. "2 메뉴" 화면에서 추가해요.</div>'}
+${S.menus.length ? `<div class="tw"><table class="t" style="min-width:${300 + chs.length * 100}px"><thead><tr><th>메뉴</th>${chs.map(ch => `<th>${esc(ch.short)}</th>`).join('')}<th class="r">합계</th></tr></thead><tbody>${salesRows}</tbody>${ordRow}</table></div>` : '<div class="mut">메뉴가 없어요. "2 메뉴" 화면에서 추가해요.</div>'}
 ${c.missing.length ? `<div class="warnbox"><span class="ic" aria-hidden="true">!</span><span>가격이 없는 칸에 판매 수가 적혀 있어요: ${esc(c.missing.join(', '))}. 매출은 0원, 재료비만 빠져요. 메뉴 화면에서 그 판매처 가격을 적어 주세요.</span></div>` : ''}
+<div class="mut" style="font-size:14px">한 손님이 메뉴를 여러 개 시켰으면 맨 아래 "주문 건수"에 손님 수(주문 수)를 적어요. 앱 수수료는 메뉴 값마다, 배달비는 주문 1건마다 빠져요.</div>
 <div class="mut" style="font-size:14px">"안 팔아요"는 메뉴 화면에서 그 판매처 가격을 비워 둔 칸이에요. 가격을 적으면 여기에 판매 수를 적을 수 있어요.</div>
 <div class="okbox">재료비는 팔린 수만큼 자동으로 빠져요. 장보기 영수증은 따로 안 적어도 돼요 (재구매 버튼으로 기록해요).</div>
 </div>
@@ -1166,27 +1174,27 @@ ${day.reviews.map(r => { const m = r.menuId && findMenu(r.menuId); const per = m
 </div></div>
 <div class="card">
 <div class="h2">어디서 얼마 팔았고, 실제로 얼마 받나요</div>
-${(() => { const bl = chs.filter(ch => c.per[ch.id].ordersBlank); return bl.length ? `<div class="warnbox" style="background:var(--ybg);color:var(--ytx)"><span class="ic" aria-hidden="true" style="background:var(--y)">!</span><span>주문 건수를 비워 둔 곳이 있어요: ${bl.map(ch => `${esc(ch.short)}(메뉴 ${c.per[ch.id].qty}개 → ${c.per[ch.id].qty}건으로 계산)`).join(', ')}. 한 주문에 여러 개를 시켰다면 건수를 적어 주세요. 비워 두면 배달비가 더 많이 빠져요.</span></div>` : ''; })()}
+${(() => { const bl = chs.filter(ch => c.per[ch.id].ordersBlank); return bl.length ? `<div class="warnbox" style="background:var(--ybg);color:var(--ytx)"><span class="ic" aria-hidden="true" style="background:var(--y)">!</span><span>주문 건수를 비워 둔 곳이 있어요: ${bl.map(ch => `${esc(ch.short)}(메뉴 ${c.per[ch.id].qty}개 → ${c.per[ch.id].qty}건으로 계산)`).join(', ')}. 한 주문에 여러 개를 시켰다면 위 "팔린 메뉴" 표 맨 아래 "주문 건수"에 적어 주세요. 비워 두면 배달비가 더 많이 빠져요.</span></div>` : ''; })()}
 <div class="tw"><table class="t" style="min-width:820px"><thead><tr><th>판 곳</th><th class="r">매출</th><th style="width:130px">주문 몇 건?</th><th>수수료와 배달비</th><th class="r">받는 돈</th></tr></thead><tbody>
 ${chs.map(ch => { const p = c.per[ch.id];
     if (ch.kind === 'store') return `<tr><td><b>매장</b></td><td class="r">${W(p.sales)}</td><td class="mut">-</td><td class="mut">카드 수수료는 쓴 돈에 적어요</td><td class="r" style="font-weight:700">${W(p.received)}</td></tr>`;
     const ordVal = day?.orders?.[ch.id];
-    return `<tr><td><b>${esc(ch.name)}</b></td><td class="r">${W(p.sales)}</td><td>${IN('ord:' + ch.id, ordVal ?? '', String(chQty(day, ch.id)), ch.short + ' 주문 건수', 'sm')}${ordVal == null || ordVal === '' ? '<div class="hint">비우면 메뉴 1개 = 1건</div>' : ''}</td>
+    return `<tr><td><b>${esc(ch.name)}</b></td><td class="r">${W(p.sales)}</td><td>${p.orders || 0}건${ordVal == null || ordVal === '' ? '<div class="hint">메뉴 1개 = 1건으로 계산</div>' : ''}</td>
 <td>${ch.kind === 'own' ? `<div class="unit"><span>직접 입력 −</span>${IN('day.ownCost', money(day?.ownCost), won((p.orders || 0) * (num(ch.fee) || 0)), '가게 배달에 든 돈', 'sm')}<span>원</span></div>${pctOf(ch) ? `<div class="hint">결제 수수료 ${fmtQ(pctOf(ch) * 100, 2)}% 별도</div>` : ''}` : `${minus(p.fee)}${ch.kind === 'pickup' ? ' <span class="mut">(결제 수수료만)</span>' : ''}`}</td>
 <td class="r" style="font-weight:700">${W(p.received)}</td></tr>`; }).join('')}
 ${(day?.transfers || []).map((tr, i) => `<tr><td><b>계좌이체</b><div class="hint">들어온 돈을 직접 적어요</div></td><td><div class="unit">${IN('tr.amount:' + tr.id, money(tr.amount), '예: 15,000', '계좌이체로 들어온 돈', 'sm')}<span>원</span></div></td><td colspan="2">${IT('tr.memo:' + tr.id, tr.memo, '누가, 왜 보냈는지 (선택)', '계좌이체 메모', 'sm')}</td><td class="r" style="font-weight:700">${W(num(tr.amount) || 0)} <button type="button" class="btn-del" data-a="delTr" data-id="${tr.id}">지우기</button></td></tr>`).join('')}
 <tr><td colspan="5"><button type="button" class="btn-line" data-a="addTr">+ 계좌이체로 들어온 돈 적기</button></td></tr>
 </tbody></table></div>
-<div class="notes"><span>배달비는 주문 한 건마다 나가요. 한 건에 메뉴를 여러 개 시킬수록 남는 돈이 늘어요.</span><span>계좌이체는 메뉴 판매와 별개로 들어온 돈(단체 주문 선입금, 예약금 등)을 금액 그대로 적어요. 수수료 없이 매출에 더해져요. 메뉴 판매는 위 표에 따로 적어요.</span><span>수수료와 배달비에는 부가세 10%가 붙어요. 수수료를 고치려면 <button type="button" class="linkbtn" data-a="gotoFees">메뉴 화면의 판매처별 수수료</button>에서 고쳐요.</span></div>
+<div class="notes"><span>앱 수수료는 메뉴 값마다, 배달비는 주문 한 건마다 나가요. 예: 배민에서 파스타 1개 주문 1건, 파스타+타코 주문 1건이면 메뉴 3개, 주문 2건이라 배달비는 2번만 빠져요. 한 건에 메뉴를 여러 개 시킬수록 남는 돈이 늘어요.</span><span>계좌이체는 메뉴 판매와 별개로 들어온 돈(단체 주문 선입금, 예약금 등)을 금액 그대로 적어요. 수수료 없이 매출에 더해져요. 메뉴 판매는 위 표에 따로 적어요.</span><span>수수료와 배달비에는 부가세 10%가 붙어요. 수수료를 고치려면 <button type="button" class="linkbtn" data-a="gotoFees">메뉴 화면의 판매처별 수수료</button>에서 고쳐요.</span></div>
 </div>
 <div class="card">
 <div class="h2">쓴 재료와 포장재, 남은 재고</div>
-<div class="mut" style="font-size:15px">쓴 양은 팔린 수로 자동으로 채워져 있어요. 실제로 다르게 썼으면 그 칸을 고쳐 주세요. 마감하고 남은 양을 세어 적으면 재고가 정확해져요. 포장재는 "어디에 써요?"에 적어 둔 대로 빠져요.</div>
+<div class="mut" style="font-size:15px">쓴 양은 팔린 수로 자동으로 채워져 있어요. 실제로 다르게 썼으면 그 칸을 고쳐 주세요. 마감하고 남은 양을 세어 적으면 재고가 정확해져요. 오늘 안 줄었으면 "변함 없음"을 눌러요. 포장재는 "어디에 써요?"에 적어 둔 대로 빠져요.</div>
 <div class="legend">${stChip('red')}<span>하루도 못 버텨요</span>${stChip('yellow')}<span>곧 사야 해요</span>${stChip('green')}<span>넉넉해요</span>${stChip('gray')}<span>계산 중</span></div>
 <div class="tw"><table class="t" style="min-width:780px"><thead><tr><th>이름</th><th style="width:190px">쓴 양 <span style="font-weight:400">(숫자만 적으면 봉지·통 수, 포장재는 개수)</span></th><th style="width:190px">마감 후 남은 양</th><th>버틸 날수</th><th>상태</th></tr></thead><tbody>
 ${items.map(it => { const s = stockStatus(it), st = stockAt(it, D), man = day?.used?.[it.o.id], au = autoUsage(it, D), pi = s.pi; const dd = s.du ? st / s.du : null;
     const isIng = it.type === 'ing', uT = q => isIng ? `${fmtQ(q / pi.size, 2)} ${pi.name}` : `${fmtS(q)} ${pi.unit}`, bT = q => isIng ? ` (${fmtS(q)} ${pi.unit})` : '';
-    return `<tr><td><b>${esc(nameOf(it))}</b></td><td>${IT('used:' + it.o.id, man != null ? uT(man) : '', uT(au), nameOf(it) + ' 쓴 양', 'sm num')}<div class="hint">${man != null ? `<span class="mine">직접 고침</span>${bT(man)} · 자동 ${uT(au)} <button type="button" class="linkbtn" data-a="clearUsed" data-id="${it.o.id}">자동으로</button>` : '자동' + bT(au)}</div></td>
+    return `<tr><td><b>${esc(nameOf(it))}</b></td><td>${IT('used:' + it.o.id, man != null ? uT(man) : '', uT(au), nameOf(it) + ' 쓴 양', 'sm num')}<div class="hint">${man != null ? `<span class="mine">${man === 0 ? '변함 없음' : '직접 고침'}</span>${man === 0 ? '' : bT(man)} · 자동 ${uT(au)} <button type="button" class="linkbtn" data-a="clearUsed" data-id="${it.o.id}">자동으로</button>` : '자동' + bT(au)}${man !== 0 ? ` · <button type="button" class="linkbtn" data-a="noUse" data-id="${it.o.id}">변함 없음</button>` : ''}</div></td>
 <td>${IT('st.now:' + it.o.id + ':' + D, packTxt(it, st), '0', nameOf(it) + ' 남은 양', 'sm num')}<div class="hint">${baseTxt(it, st)}</div></td><td>${dd == null ? '<span class="mut">계산 중</span>' : fmtQ(dd, 1) + '일'}</td><td>${stChip(s.lv)}</td></tr>`; }).join('') || '<tr><td colspan="5" class="mut">재료나 포장재가 없어요.</td></tr>'}
 </tbody></table></div></div>
 <div class="card">
@@ -1461,6 +1469,7 @@ const A = {
   addSup: () => { commit(() => { mkSup(S, { name: '', packText: '100개 묶음', packs: 1 }, today(), Date.now()); }); const ins = app.querySelectorAll('[data-k^="sup.name:"]'); ins[ins.length - 1]?.focus(); },
   delSup: d => { const s = findSup(d.id); confirmDel(`"${s.name || '이름 없는 포장재'}"를 지울까요?`, '재고 카드와 구매 기록도 같이 지워져요.', () => commit(() => { S.supplies = S.supplies.filter(x => x.id !== d.id); S.purchases = S.purchases.filter(p => p.itemId !== d.id); }), '포장재를 지웠어요'); },
   clearUse: d => commit(() => { findItem(d.id).o.dailyManual = null; }),
+  noUse: d => commit(() => { const day = dayOf(ui.date, true); day.used = day.used || {}; day.used[d.id] = 0; }),
   clearUsed: d => commit(() => { const day = S.days[ui.date]; if (day?.used) delete day.used[d.id]; }),
   adjust: () => openAdjust(),
   addMenu: () => { let id; commit(() => { id = uid(); S.menus.push({ id, name: '', prices: { store: null }, recipe: [] }); }); ui.menuId = id; ui.tab = 'menu'; render(); document.getElementById('mname')?.focus(); },
