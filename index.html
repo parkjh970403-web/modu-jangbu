@@ -252,7 +252,7 @@ dialog::backdrop{background:rgba(23,35,28,.45)}
 <input type="file" id="importFile" accept=".json,application/json" hidden>
 <script>
 'use strict';
-const APP_VERSION = '2026-10-19';
+const APP_VERSION = '2026-10-19b';
 /* ============ 유틸 ============ */
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -893,6 +893,8 @@ function bannersHtml() {
   if (fileState === 'lost') b.push(`<div class="banner banner-red" role="alert"><div class="col"><b>저장 파일과 연결이 끊겼어요</b><span>지금 적는 내용은 브라우저에만 저장돼요. 아래 버튼을 누르고 "허용"을 눌러 주세요.</span></div><div class="acts"><button type="button" class="btn-red" data-a="reconnect">다시 연결하기</button></div></div>`);
   else if (fileState === 'missing') b.push(`<div class="banner banner-red" role="alert"><div class="col"><b>저장 파일이 없어졌어요</b><span>${esc(fileHandle?.name || '모두의장부.json')} 파일을 지웠거나 옮긴 것 같아요. 지금 장부는 브라우저에 남아 있어요. 새 저장 파일을 만들면 거기에 이어서 저장돼요.</span></div><div class="acts"><button type="button" class="btn-red" data-a="pickFile">새 저장 파일 만들기</button><button type="button" class="btn-line" data-a="openFile">옮긴 파일 찾기</button></div></div>`);
   else if (fileState === 'none' && !ds.file) b.push(`<div class="banner banner-yellow"><div class="col"><b>처음 한 번, 장부를 저장할 파일을 골라 주세요</b><span>고르면 적을 때마다 그 파일에도 자동으로 저장돼요. 구글 드라이브·원드라이브 폴더를 고르면 클라우드 백업도 돼요.</span></div><div class="acts"><button type="button" class="btn-dark" data-a="pickFile">저장 위치 고르기</button><button type="button" class="btn-line" data-a="dismiss" data-id="file">나중에</button></div></div>`);
+  const py = pendingYear();
+  if (py) b.push(`<div class="banner banner-yellow"><div class="col"><b>해가 바뀌었어요. ${py}년 장부를 따로 저장해 두세요</b><span>${py}년에 적은 기록만 한 파일로 저장해요. 세금 신고나 나중에 찾아볼 때 편해요. 지금 장부는 그대로 이어서 쓰면 돼요.</span></div><div class="acts"><button type="button" class="btn-dark" data-a="saveYear" data-v="${py}">${py}년 장부 저장하기</button><button type="button" class="btn-line" data-a="dismiss" data-id="year${py}">나중에</button></div></div>`);
   if (S.rateNotice) {
     const ch = S.rateNotice.changes || [];
     const auto = ch.filter(c => c.applied), mine = ch.filter(c => !c.applied);
@@ -1289,7 +1291,8 @@ ${fileState === 'ok' ? `<div class="okbox"><b>장부가 이 파일에 자동으�
 <button type="button" class="btn-line" data-a="importJson">백업 불러오기</button>
 <button type="button" class="btn-line" data-a="exportCsv">${mLabel(M)} 엑셀(CSV)로 저장</button>
 </div>
-<div class="notes"><span>앱 버전 ${APP_VERSION}. 새 버전을 올리면 다음에 열 때 자동으로 바뀌어요 (바로 받으려면 Ctrl+Shift+R).</span><span>장부는 사장님 PC에만 저장되고 서버로 올라가지 않아요. 다른 브라우저나 시크릿 창에서 열면 빈 장부가 나와요.</span><span>처음이라 둘러보고 싶으면 <button type="button" class="linkbtn" data-a="demo">예시 장부 넣어 보기</button> (지금 장부를 바꿔요. "되돌리기"로 원래대로 돌릴 수 있어요)</span></div>
+${dataYears().length ? `<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center"><b>연도별로 따로 저장</b>${dataYears().map(y => `<button type="button" class="btn-line" data-a="saveYear" data-v="${y}">${y}년 장부${(S.settings.archived || []).includes(y) ? ' ✓' : ''}</button>`).join('')}</div>` : ''}
+<div class="notes"><span>장부는 여러 해를 한 파일에 계속 이어서 적어도 괜찮아요 (1년에 몇 MB 정도). 해가 바뀌면 지난해 장부를 따로 저장하라고 알려 드려요.</span><span>앱 버전 ${APP_VERSION}. 새 버전을 올리면 다음에 열 때 자동으로 바뀌어요 (바로 받으려면 Ctrl+Shift+R).</span><span>장부는 사장님 PC에만 저장되고 서버로 올라가지 않아요. 다른 브라우저나 시크릿 창에서 열면 빈 장부가 나와요.</span><span>처음이라 둘러보고 싶으면 <button type="button" class="linkbtn" data-a="demo">예시 장부 넣어 보기</button> (지금 장부를 바꿔요. "되돌리기"로 원래대로 돌릴 수 있어요)</span></div>
 </div>`;
 }
 
@@ -1509,6 +1512,7 @@ const A = {
   addFx: () => { commit(() => { S.fixedCosts.push({ id: uid(), name: '', annual: false, hist: [{ from: ui.month, amount: 0 }] }); }); const ins = app.querySelectorAll('[data-k^="fx.name:"]'); ins[ins.length - 1]?.focus(); },
   delFx: d => { const f = S.fixedCosts.find(x => x.id === d.id); confirmDel(`"${f.name || '이름 없는 항목'}"을(를) 지울까요?`, '지난달 계산에서도 빠져요. 이번 달부터 안 나가는 돈이면 금액을 0으로 고치는 게 좋아요.', () => commit(() => { S.fixedCosts = S.fixedCosts.filter(x => x.id !== d.id); }), '항목을 지웠어요'); },
   pickFile: () => pickFile(), openFile: () => openFile(), reconnect: () => reconnect(),
+  saveYear: d => saveYear(Number(d.v)),
   exportJson: () => exportJson(), importJson: () => document.getElementById('importFile').click(), exportCsv: () => exportCsv(ui.month),
   demo: () => confirmDel('예시 장부를 넣을까요?', '지금 적어 둔 장부 대신 시안과 비슷한 가짜 숫자가 들어가요. "방금 한 일 되돌리기"로 원래 장부로 돌아올 수 있어요.', () => { commit(() => { const keep = { dismissed: S.settings.dismissed }; const d = demoState(); S = d; S.settings.dismissed = keep.dismissed; }); ui.menuId = null; render(); }, '예시 장부를 넣었어요', '넣기'),
   dismiss: d => { S.settings.dismissed = Object.assign({}, S.settings.dismissed, { [d.id]: true }); scheduleSave(); render(); },
@@ -1650,7 +1654,7 @@ async function openFile() {
     const d = safeParse(await (await h.getFile()).text());
     if (!d || !Array.isArray(d.menus)) return toast('모두의장부 파일이 아니에요.');
     if ((await h.requestPermission({ mode: 'readwrite' })) !== 'granted') return toast('저장 허용을 눌러야 이 파일에 자동 저장돼요.');
-    confirmDel('이 파일의 장부로 바꿀까요?', `${h.name} 파일에 저장된 장부를 열고, 앞으로 이 파일에 자동 저장해요. 지금 화면의 장부는 "되돌리기"로 돌아올 수 있어요.`, async () => { commit(() => { S = migrate(d); }); fileHandle = h; fileState = 'ok'; await kvSet('fileHandle', h); saveNow(); }, '장부 파일을 열었어요', '열기');
+    confirmDel('이 파일의 장부로 바꿀까요?', `${h.name} 파일에 저장된 장부를 열고,${d.archiveYear ? ` (${d.archiveYear}년 기록만 담긴 보관 장부예요)` : ''} 앞으로 이 파일에 자동 저장해요. 지금 화면의 장부는 "되돌리기"로 돌아올 수 있어요.`, async () => { commit(() => { S = migrate(d); }); fileHandle = h; fileState = 'ok'; await kvSet('fileHandle', h); saveNow(); }, '장부 파일을 열었어요', '열기');
   } catch (e) { if (e && e.name !== 'AbortError') toast('파일을 열 수 없어요.'); }
 }
 async function reconnect() {
@@ -1672,7 +1676,7 @@ document.getElementById('importFile').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
   const d = safeParse(await f.text());
   if (!d || !Array.isArray(d.menus)) return toast('모두의장부 백업 파일이 아니에요.');
-  confirmDel('백업 파일로 바꿀까요?', `${f.name}의 장부로 바꿔요. 지금 장부는 "되돌리기"로 돌아올 수 있어요.`, () => { commit(() => { S = migrate(d); }); ui.menuId = null; render(); }, '백업을 불러왔어요', '불러오기');
+  confirmDel('백업 파일로 바꿀까요?', `${f.name}의 장부로 바꿔요.${d.archiveYear ? ` 이 파일은 ${d.archiveYear}년 기록만 담긴 보관 장부예요.` : ''} 지금 장부는 "되돌리기"로 돌아올 수 있어요.`, () => { commit(() => { S = migrate(d); }); ui.menuId = null; render(); }, '백업을 불러왔어요', '불러오기');
 });
 function exportCsv(M) {
   const q = v => { let s = String(v ?? ''); if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -1686,6 +1690,40 @@ function exportCsv(M) {
   rows.push([], ['메뉴', '판 개수', '매출']); for (const m of S.menus) { const e = r.menus[m.id]; if (e) rows.push([m.name, e.qty, R(e.sales)]); }
   download(`모두의장부-${M}.csv`, '﻿' + rows.map(x => x.map(q).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
   toast('엑셀에서 열 수 있는 CSV 파일을 받았어요.');
+}
+
+/* ============ 연도별 보관 ============ */
+// 해가 바뀌면 지난해 기록만 담은 파일을 따로 저장하게 한다. 지금 장부는 그대로 이어서 쓴다.
+function dataYears() {
+  const ys = new Set();
+  for (const d of [...Object.keys(S.days), ...S.purchases.map(p => p.date)]) { const y = Number(String(d || '').slice(0, 4)); if (y) ys.add(y); }
+  return [...ys].sort();
+}
+function pendingYear() {
+  const cur = Number(today().slice(0, 4)), ds = S.settings.dismissed || {}, done = S.settings.archived || [];
+  return dataYears().filter(y => y < cur && !done.includes(y) && !ds['year' + y]).pop() || null;
+}
+function yearSnapshot(y) {
+  const s = JSON.parse(JSON.stringify(S)), p = String(y);
+  s.days = Object.fromEntries(Object.entries(s.days).filter(([d]) => d.startsWith(p)));
+  s.purchases = s.purchases.filter(x => String(x.date || '').startsWith(p));
+  s.archiveYear = y; s.rateNotice = null;
+  return s;
+}
+async function saveYear(y) {
+  const name = `모두의장부-${y}년.json`, json = JSON.stringify(yearSnapshot(y), null, 1);
+  let picked = false;
+  if (fsSupported) {
+    try {
+      // 지금 쓰는 저장 파일이 있는 폴더에서 열리게 해서 "저장"만 누르면 되게 한다
+      const h = await showSaveFilePicker({ suggestedName: name, startIn: fileHandle || 'documents', types: [{ description: '모두의장부 장부 파일', accept: { 'application/json': ['.json'] } }] });
+      const w = await h.createWritable(); await w.write(json); await w.close(); picked = true;
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  if (!picked) download(name, json, 'application/json');
+  S.settings.archived = [...new Set([...(S.settings.archived || []), y])].sort();
+  scheduleSave(); render();
+  toast(picked ? `${y}년 장부를 따로 저장했어요.` : `${y}년 장부를 받았어요. 다운로드 폴더를 확인해 주세요.`);
 }
 
 /* ============ 수수료 기본값 자동 확인 (한 달에 한 번) ============ */
