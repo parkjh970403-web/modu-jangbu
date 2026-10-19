@@ -252,7 +252,7 @@ dialog::backdrop{background:rgba(23,35,28,.45)}
 <input type="file" id="importFile" accept=".json,application/json" hidden>
 <script>
 'use strict';
-const APP_VERSION = '2026-10-18';
+const APP_VERSION = '2026-10-19';
 /* ============ 유틸 ============ */
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -864,6 +864,7 @@ const money = v => v == null || v === '' ? '' : won(v);
 function statusHtml() {
   if (ui.saving) return `<div class="status wait"><span class="dot"></span>저장 중…</div>`;
   if (fileState === 'lost') return `<div class="status bad"><span class="dot"></span>저장 파일 연결이 끊겼어요</div>`;
+  if (fileState === 'missing') return `<div class="status bad"><span class="dot"></span>저장 파일이 없어졌어요</div>`;
   if (!ui.idbOk && fileState !== 'ok') return `<div class="status bad"><span class="dot"></span>저장이 안 되고 있어요</div>`;
   return `<div class="status"><span class="dot"></span>자동 저장됨${fileState === 'ok' ? ' · 파일에도 저장' : ''}</div>`;
 }
@@ -890,6 +891,7 @@ function headerHtml() {
 function bannersHtml() {
   const b = [], ds = S.settings.dismissed || {};
   if (fileState === 'lost') b.push(`<div class="banner banner-red" role="alert"><div class="col"><b>저장 파일과 연결이 끊겼어요</b><span>지금 적는 내용은 브라우저에만 저장돼요. 아래 버튼을 누르고 "허용"을 눌러 주세요.</span></div><div class="acts"><button type="button" class="btn-red" data-a="reconnect">다시 연결하기</button></div></div>`);
+  else if (fileState === 'missing') b.push(`<div class="banner banner-red" role="alert"><div class="col"><b>저장 파일이 없어졌어요</b><span>${esc(fileHandle?.name || '모두의장부.json')} 파일을 지웠거나 옮긴 것 같아요. 지금 장부는 브라우저에 남아 있어요. 새 저장 파일을 만들면 거기에 이어서 저장돼요.</span></div><div class="acts"><button type="button" class="btn-red" data-a="pickFile">새 저장 파일 만들기</button><button type="button" class="btn-line" data-a="openFile">옮긴 파일 찾기</button></div></div>`);
   else if (fileState === 'none' && !ds.file) b.push(`<div class="banner banner-yellow"><div class="col"><b>처음 한 번, 장부를 저장할 파일을 골라 주세요</b><span>고르면 적을 때마다 그 파일에도 자동으로 저장돼요. 구글 드라이브·원드라이브 폴더를 고르면 클라우드 백업도 돼요.</span></div><div class="acts"><button type="button" class="btn-dark" data-a="pickFile">저장 위치 고르기</button><button type="button" class="btn-line" data-a="dismiss" data-id="file">나중에</button></div></div>`);
   if (S.rateNotice) {
     const ch = S.rateNotice.changes || [];
@@ -1279,7 +1281,7 @@ ${S.fixedCosts.map(f => { const raw = fixedRaw(f, M); return `<tr><td>${IT('fx.n
 </div>
 <div class="card">
 <div class="h2">장부 저장과 백업</div>
-${fileState === 'ok' ? `<div class="okbox"><b>장부가 이 파일에 자동으로 저장되고 있어요:</b> ${esc(fileHandle?.name || '모두의장부.json')} ${ui.lastFileSave ? '· 방금 저장됨' : ''}. 브라우저 데이터를 지워도 이 파일로 복구돼요.</div>` : fileState === 'lost' ? `<div class="warnbox"><span class="ic">!</span><span>저장 파일과 연결이 끊겼어요. 화면 맨 위 "다시 연결하기"를 눌러 주세요.</span></div>` : `<div class="warnbox"><span class="ic">!</span><span>지금은 이 브라우저 안에만 저장돼요. "저장 위치 고르기"로 PC 폴더에 파일을 만들어 두면 더 안전해요.${fsSupported ? '' : ' (이 브라우저에서는 파일 자동 저장을 쓸 수 없어요. 크롬이나 엣지에서 열어 주세요.)'}</span></div>`}
+${fileState === 'ok' ? `<div class="okbox"><b>장부가 이 파일에 자동으로 저장되고 있어요:</b> ${esc(fileHandle?.name || '모두의장부.json')} ${ui.lastFileSave ? '· 방금 저장됨' : ''}. 브라우저 데이터를 지워도 이 파일로 복구돼요.</div>` : fileState === 'lost' ? `<div class="warnbox"><span class="ic">!</span><span>저장 파일과 연결이 끊겼어요. 화면 맨 위 "다시 연결하기"를 눌러 주세요.</span></div>` : fileState === 'missing' ? `<div class="warnbox"><span class="ic">!</span><span>저장 파일이 없어졌어요. "저장 위치 고르기"로 새 파일을 만들어 주세요. 지금 장부는 브라우저에 남아 있어요.</span></div>` : `<div class="warnbox"><span class="ic">!</span><span>지금은 이 브라우저 안에만 저장돼요. "저장 위치 고르기"로 PC 폴더에 파일을 만들어 두면 더 안전해요.${fsSupported ? '' : ' (이 브라우저에서는 파일 자동 저장을 쓸 수 없어요. 크롬이나 엣지에서 열어 주세요.)'}</span></div>`}
 <div style="display:flex;flex-wrap:wrap;gap:10px">
 <button type="button" class="btn-dark" data-a="pickFile">저장 위치 고르기·바꾸기</button>
 <button type="button" class="btn-line" data-a="openFile">저장해 둔 장부 파일 열기</button>
@@ -1626,11 +1628,12 @@ async function saveNow() {
       if ((await fileHandle.queryPermission({ mode: 'readwrite' })) !== 'granted') throw new Error('perm');
       const w = await fileHandle.createWritable(); await w.write(json); await w.close();
       fileState = 'ok'; ui.lastFileSave = Date.now();
-    } catch { fileState = 'lost'; }
+    } catch (e) { fileState = isGone(e) ? 'missing' : 'lost'; }
   }
   ui.saving = false;
   if (before !== fileState) render(); else renderStatus();
 }
+const isGone = e => e && (e.name === 'NotFoundError' || e.name === 'NotReadableError');
 async function writeFile(h) { const w = await h.createWritable(); await w.write(JSON.stringify(S)); await w.close(); }
 async function pickFile() {
   if (!fsSupported) return toast('이 브라우저에서는 파일 자동 저장을 쓸 수 없어요. 크롬이나 엣지에서 열어 주세요. 대신 "백업 파일 받기"를 눌러 두세요.');
@@ -1657,7 +1660,11 @@ async function reconnect() {
     const d = safeParse(await (await fileHandle.getFile()).text());
     if (d && Array.isArray(d.menus) && (d.savedAt || '') > (S.savedAt || '')) { S = migrate(d); C = {}; }
     fileState = 'ok'; await saveNow(); render(); toast('다시 연결했어요. 파일에도 저장돼요.');
-  } catch { toast('파일을 찾을 수 없어요. 옮기거나 지웠다면 "저장 위치 고르기"로 새로 정해 주세요.'); fileState = 'lost'; render(); }
+  } catch (e) {
+    if (isGone(e)) { fileState = 'missing'; toast('저장 파일이 없어졌어요. "새 저장 파일 만들기"를 눌러 주세요.'); }
+    else { fileState = 'lost'; toast('파일에 연결할 수 없어요. 다시 눌러 주세요.'); }
+    render();
+  }
 }
 function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
 function exportJson() { download(`모두의장부-백업-${today()}.json`, JSON.stringify(S, null, 1), 'application/json'); toast('백업 파일을 받았어요. 다운로드 폴더를 확인해 주세요.'); }
@@ -1725,7 +1732,7 @@ async function boot() {
         if (fd && Array.isArray(fd.menus) && (!data || (fd.savedAt || '') > (data.savedAt || ''))) data = fd;
         fileState = 'ok';
       } else fileState = 'lost';
-    } catch { fileState = 'lost'; }
+    } catch (e) { fileState = isGone(e) ? 'missing' : 'lost'; }
   }
   S = migrate(data || seedState());
   if (!data) { S.savedAt = new Date().toISOString(); ui.idbOk = await kvSet('ledger', JSON.stringify(S)); }
