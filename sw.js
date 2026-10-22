@@ -1,5 +1,5 @@
 // 모두의장부 오프라인 캐시. 새 버전을 올리면 VERSION만 바꾸면 된다.
-const VERSION = 'mj-v13';
+const VERSION = 'mj-v14';
 const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
