@@ -28,10 +28,12 @@ python3 -m http.server 8000
 
 Cloudflare Pages에 올리기 (처음 한 번 `npx wrangler login`):
 ```
-mkdir -p /tmp/mj-deploy && rm -rf /tmp/mj-deploy/* && git ls-files | grep -v -E '^README\.md$|^\.' | xargs -I{} cp {} /tmp/mj-deploy/
+rm -rf /tmp/mj-deploy && mkdir -p /tmp/mj-deploy && git archive HEAD | tar -x -C /tmp/mj-deploy && rm /tmp/mj-deploy/README.md
 npx wrangler pages deploy /tmp/mj-deploy --project-name modu-jangbu --branch main
 ```
-새 버전을 올릴 때는 `sw.js`의 `VERSION`을 바꾸고, `rates.json`만 고쳤을 때도 위 명령으로 다시 올린다.
+새 버전을 올릴 때는 `sw.js`의 `VERSION`을 바꾸고, `rates.json`만 고쳤을 때도 위 명령으로 다시 올린다. 커밋한 내용만 올라간다.
+
+`.well-known/assetlinks.json`은 안드로이드 앱(`com.modujangbu.app`)이 이 사이트의 주인임을 확인하는 파일이다. 지우거나 옮기면 앱 위쪽에 주소창이 생긴다. 플레이 콘솔의 "앱 서명 키" SHA-256 지문도 여기에 더해야 한다.
 
 ## 처음 둘러보기
 "4 이번 달 결과" 맨 아래 **예시 장부 넣어 보기** → 시안과 비슷한 가짜 숫자가 들어간다. "방금 한 일 되돌리기"로 원래대로.

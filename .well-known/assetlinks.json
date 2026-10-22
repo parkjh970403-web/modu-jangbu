@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.modujangbu.app",
+      "sha256_cert_fingerprints": [
+        "2C:0D:74:F5:49:14:53:88:7F:CF:CB:D6:63:A7:9B:23:B3:3C:59:7A:9B:80:4D:03:EB:50:3B:B2:28:4B:B6:7C"
+      ]
+    }
+  }
+]
