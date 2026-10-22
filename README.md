@@ -19,7 +19,19 @@ python3 -m http.server 8000
 파일을 더블클릭(file://)해도 열리지만, 설치·오프라인·수수료 자동 갱신은 http(s) 주소에서만 동작한다.
 
 ## 배포
-폴더 전체를 GitHub Pages 또는 Cloudflare Pages에 그대로 올린다. 빌드 과정 없음.
+빌드 과정 없음. 두 곳에 올라가 있다.
+
+| 주소 | 올리는 방법 |
+|---|---|
+| https://modu-jangbu.pages.dev (Cloudflare Pages, 안드로이드 앱이 쓰는 주소) | 아래 명령으로 직접 올린다. GitHub에 push해도 자동으로 바뀌지 않는다 |
+| https://parkjh970403-web.github.io/modu-jangbu/ (GitHub Pages) | main에 push하면 자동 |
+
+Cloudflare Pages에 올리기 (처음 한 번 `npx wrangler login`):
+```
+mkdir -p /tmp/mj-deploy && rm -rf /tmp/mj-deploy/* && git ls-files | grep -v -E '^README\.md$|^\.' | xargs -I{} cp {} /tmp/mj-deploy/
+npx wrangler pages deploy /tmp/mj-deploy --project-name modu-jangbu --branch main
+```
+새 버전을 올릴 때는 `sw.js`의 `VERSION`을 바꾸고, `rates.json`만 고쳤을 때도 위 명령으로 다시 올린다.
 
 ## 처음 둘러보기
 "4 이번 달 결과" 맨 아래 **예시 장부 넣어 보기** → 시안과 비슷한 가짜 숫자가 들어간다. "방금 한 일 되돌리기"로 원래대로.
